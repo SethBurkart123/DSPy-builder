@@ -1,10 +1,36 @@
-export type PortType = "string" | "string[]" | "boolean" | "float" | "int";
+export type PortType = "string" | "string[]" | "boolean" | "float" | "int" | "object" | "array";
 
 export type Port = {
   id: string;
   name: string;
   type: PortType;
+  // For custom objects and arrays
+  customSchema?: CustomSchema;
+  arrayItemType?: PortType;
+  arrayItemSchema?: CustomSchema;
+  description?: string;
 };
+
+// Schema definition interfaces
+export interface SchemaField {
+  id: string;
+  name: string;
+  type: PortType;
+  description?: string;
+  required: boolean;
+  arrayItemType?: PortType;
+  arrayItemSchema?: CustomSchema;
+  objectSchema?: CustomSchema;
+}
+
+export interface CustomSchema {
+  id: string;
+  name: string;
+  description?: string;
+  fields: SchemaField[];
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export type NodeKind = "chainofthought" | "classify" | "custom";
 
@@ -21,6 +47,8 @@ export const PORT_COLORS: Record<PortType, string> = {
   boolean: "bg-amber-500",
   float: "bg-indigo-500",
   int: "bg-fuchsia-500",
+  object: "bg-purple-500",
+  array: "bg-cyan-500",
 };
 
 export const PORT_HEX: Record<PortType, string> = {
@@ -29,4 +57,6 @@ export const PORT_HEX: Record<PortType, string> = {
   boolean: "#f59e0b", // amber-500
   float: "#6366f1", // indigo-500
   int: "#d946ef", // fuchsia-500
+  object: "#a855f7", // purple-500
+  array: "#06b6d4", // cyan-500
 };

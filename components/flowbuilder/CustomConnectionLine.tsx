@@ -33,13 +33,29 @@ export function CustomConnectionLine({
     }
   }
 
+  // Determine the correct positions based on which handle we're dragging from
+  let sourcePosition = Position.Right;
+  let targetPosition = Position.Left;
+  
+  if (fromHandle && typeof fromHandle.id === 'string') {
+    if (fromHandle.id.startsWith('out-')) {
+      // Dragging from output port - curve should go outward (right)
+      sourcePosition = Position.Right;
+      targetPosition = Position.Left;
+    } else if (fromHandle.id.startsWith('in-')) {
+      // Dragging from input port - curve should go inward (left)
+      sourcePosition = Position.Left;
+      targetPosition = Position.Right;
+    }
+  }
+
   const [edgePath] = getBezierPath({
     sourceX: fromX,
     sourceY: fromY,
-    sourcePosition: Position.Right,
+    sourcePosition,
     targetX: toX,
     targetY: toY,
-    targetPosition: Position.Left,
+    targetPosition,
   });
 
   return (

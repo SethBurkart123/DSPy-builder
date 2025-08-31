@@ -24,6 +24,7 @@ import { PORT_HEX } from "@/components/flowbuilder/types";
 import { api } from "@/lib/api";
 import Palette from "@/components/flowbuilder/Palette";
 import type { ReactFlowInstance } from "reactflow";
+import { createDemoSchemas } from "@/lib/demo-schemas";
 
 function genId(prefix = "id"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
@@ -74,9 +75,13 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
 
-  // Fetch flow name for topbar
+  // Fetch flow name for topbar and initialize demo schemas
   useEffect(() => {
     let active = true;
+    
+    // Initialize demo schemas
+    createDemoSchemas();
+    
     api
       .getFlow(id)
       .then((f) => {
