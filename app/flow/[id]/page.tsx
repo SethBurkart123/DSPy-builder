@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, use } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -11,13 +11,16 @@ import ReactFlow, {
   Node,
   useEdgesState,
   useNodesState,
+  BackgroundVariant,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
 import Topbar from "@/components/flowbuilder/Topbar";
 import NodeInspector from "@/components/flowbuilder/NodeInspector";
 import { TypedNode } from "@/components/flowbuilder/TypedNode";
+import { CustomConnectionLine } from "@/components/flowbuilder/CustomConnectionLine";
 import type { TypedNodeData, Port, NodeKind, PortType } from "@/components/flowbuilder/types";
+import { PORT_HEX } from "@/components/flowbuilder/types";
 import { api } from "@/lib/api";
 import Palette from "@/components/flowbuilder/Palette";
 import type { ReactFlowInstance } from "reactflow";
@@ -51,25 +54,9 @@ function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: st
   };
 }
 
-export default function FlowBuilderPage({ params }: { params: { id: string } }) {
-  const [flowTitle, setFlowTitle] = useState<string>("Flow");
-  const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
 
-  // Fetch flow name for topbar
-  useEffect(() => {
-    let active = true;
-    api
-      .getFlow(params.id)
-      .then((f) => {
-        if (active) setFlowTitle(f.name);
-      })
-      .catch(() => setFlowTitle(`Flow ${params.id.slice(0, 6)}`));
-    return () => {
-      active = false;
-    };
-  }, [params.id]);
-
+export default function FlowBuilderPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const initialNodes = useMemo<Node<TypedNodeData>[]>(
     () => [
       makeNode("chainofthought", { x: 200, y: 200 }, "Chain Of Thought"),
@@ -77,12 +64,31 @@ export default function FlowBuilderPage({ params }: { params: { id: string } }) 
     ],
     []
   );
-
+  
+  const [flowTitle, setFlowTitle] = useState<string>("Flow");
+  const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<TypedNodeData>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
+
+  // Fetch flow name for topbar
+  useEffect(() => {
+    let active = true;
+    api
+      .getFlow(id)
+      .then((f) => {
+        if (active) setFlowTitle(f.name);
+      })
+      .catch(() => setFlowTitle(`Flow ${id.slice(0, 6)}`));
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+
 
   function portTypeFor(nodeId?: string | null, handleId?: string | null): PortType | null {
     if (!nodeId || !handleId) return null;
@@ -111,9 +117,20 @@ export default function FlowBuilderPage({ params }: { params: { id: string } }) 
   const onConnect = useCallback(
     (connection: Connection) => {
       if (!isValidConnection(connection)) return;
-      setEdges((eds) => addEdge({ ...connection }, eds));
+      
+      // Get the port type to style the edge
+      const portType = portTypeFor(connection.source, connection.sourceHandle);
+      const edgeColor = portType ? PORT_HEX[portType] : "#64748b"; // default gray
+      
+      setEdges((eds) => addEdge({ 
+        ...connection,
+        style: { 
+          stroke: edgeColor,
+          strokeWidth: 3,
+        },
+      }, eds));
     },
-    [isValidConnection, setEdges]
+    [isValidConnection, setEdges, nodes]
   );
 
   const onSelectionChange = useCallback(({ nodes: n }: { nodes: Node[] }) => {
@@ -196,9 +213,10 @@ export default function FlowBuilderPage({ params }: { params: { id: string } }) 
           isValidConnection={isValidConnection}
           onSelectionChange={onSelectionChange}
           onInit={(inst) => setRfInstance(inst)}
+          connectionLineComponent={CustomConnectionLine}
           fitView
         >
-          <Background variant="dots" gap={16} size={1} />
+          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
           <MiniMap />
           <Controls />
         </ReactFlow>
