@@ -6,14 +6,7 @@ import { type Port, type PortType, type TypedNodeData, type CustomSchema } from 
 import { 
   Plus, 
   Trash2,
-  Type,
-  List,
-  ToggleLeft,
-  Hash,
-  Binary,
   Package,
-  Layers,
-  Settings,
   Library
 } from "lucide-react";
 import {
@@ -33,47 +26,9 @@ import { schemaManager } from "@/lib/schema-manager";
 
 const ALL_TYPES: PortType[] = ["string", "string[]", "boolean", "float", "int", "array", "object"];
 
-const getTypeIcon = (type: PortType) => {
-  switch (type) {
-    case "string":
-      return <Type className="h-3 w-3" />;
-    case "string[]":
-      return <List className="h-3 w-3" />;
-    case "boolean":
-      return <ToggleLeft className="h-3 w-3" />;
-    case "float":
-      return <Hash className="h-3 w-3" />;
-    case "int":
-      return <Binary className="h-3 w-3" />;
-    case "object":
-      return <Package className="h-3 w-3" />;
-    case "array":
-      return <Layers className="h-3 w-3" />;
-    default:
-      return <Type className="h-3 w-3" />;
-  }
-};
-
-const getTypeLabel = (type: PortType) => {
-  switch (type) {
-    case "string":
-      return "Text";
-    case "string[]":
-      return "Text Array";
-    case "boolean":
-      return "Boolean";
-    case "float":
-      return "Decimal";
-    case "int":
-      return "Integer";
-    case "object":
-      return "Custom Object";
-    case "array":
-      return "Array";
-    default:
-      return type;
-  }
-};
+import { typeIcon, typeLabel } from "./typeDisplay";
+const getTypeIcon = (type: PortType) => typeIcon(type, "h-3 w-3");
+const getTypeLabel = (type: PortType) => typeLabel(type);
 
 export default function NodeInspector({
   node,

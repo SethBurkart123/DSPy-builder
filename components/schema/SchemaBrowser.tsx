@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Package, Edit, Trash2, Copy, Code, Search, Plus, Type, List, ToggleLeft, Hash, Binary, Layers } from "lucide-react";
+import { Package, Edit, Trash2, Code, Search, Plus } from "lucide-react";
 import { CustomSchema } from "@/components/flowbuilder/types";
 import { schemaManager } from "@/lib/schema-manager";
+import { typeIcon, typeLabel } from "@/components/flowbuilder/typeDisplay";
 import {
   Dialog,
   DialogContent,
@@ -66,47 +67,9 @@ export function SchemaBrowser({
     (schema.description || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getTypeLabel = (t: string) => {
-    switch (t) {
-      case "string":
-        return "Text";
-      case "string[]":
-        return "Text Array";
-      case "boolean":
-        return "Boolean";
-      case "float":
-        return "Decimal";
-      case "int":
-        return "Integer";
-      case "object":
-        return "Object";
-      case "array":
-        return "Array";
-      default:
-        return t;
-    }
-  };
+  const getTypeLabel = (t: string) => typeLabel(t);
 
-  const getTypeIcon = (t: string) => {
-    switch (t) {
-      case "string":
-        return <Type className="h-3 w-3" />;
-      case "string[]":
-        return <List className="h-3 w-3" />;
-      case "boolean":
-        return <ToggleLeft className="h-3 w-3" />;
-      case "float":
-        return <Hash className="h-3 w-3" />;
-      case "int":
-        return <Binary className="h-3 w-3" />;
-      case "object":
-        return <Package className="h-3 w-3" />;
-      case "array":
-        return <Layers className="h-3 w-3" />;
-      default:
-        return <Type className="h-3 w-3" />;
-    }
-  };
+  const getTypeIcon = (t: string) => typeIcon(t, "h-3 w-3");
 
   // Render nested structure of a schema up to a sane depth
   const renderNestedSchema = (schema: CustomSchema, level: number = 1, maxLevels: number = 4) => {

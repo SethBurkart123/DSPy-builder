@@ -2,14 +2,8 @@
 
 import { useState } from "react";
 import { 
-  Trash2, 
-  Type, 
-  List, 
-  ToggleLeft, 
-  Hash, 
-  Binary, 
-  Package, 
-  Layers,
+  Trash2,
+  Package,
   GripVertical,
   Plus
 } from "lucide-react";
@@ -27,50 +21,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { SchemaField, PortType, CustomSchema } from "@/components/flowbuilder/types";
 import { schemaManager } from "@/lib/schema-manager";
-import { filterPythonIdentifier, getPythonIdentifierError, toSnakeCase } from "@/lib/python-identifier-utils";
+import { filterPythonIdentifier, getPythonIdentifierError } from "@/lib/python-identifier-utils";
 import { SchemaSelector } from "./SchemaSelector";
+import { typeIcon, typeLabel } from "@/components/flowbuilder/typeDisplay";
 
-const getTypeIcon = (type: PortType) => {
-  switch (type) {
-    case "string":
-      return <Type className="h-3 w-3" />;
-    case "string[]":
-      return <List className="h-3 w-3" />;
-    case "boolean":
-      return <ToggleLeft className="h-3 w-3" />;
-    case "float":
-      return <Hash className="h-3 w-3" />;
-    case "int":
-      return <Binary className="h-3 w-3" />;
-    case "object":
-      return <Package className="h-3 w-3" />;
-    case "array":
-      return <Layers className="h-3 w-3" />;
-    default:
-      return <Type className="h-3 w-3" />;
-  }
-};
-
-const getTypeLabel = (type: PortType) => {
-  switch (type) {
-    case "string":
-      return "Text";
-    case "string[]":
-      return "Text Array";
-    case "boolean":
-      return "Boolean";
-    case "float":
-      return "Decimal";
-    case "int":
-      return "Integer";
-    case "object":
-      return "Custom Object";
-    case "array":
-      return "Array";
-    default:
-      return type;
-  }
-};
+const getTypeIcon = (type: PortType) => typeIcon(type, "h-3 w-3");
+const getTypeLabel = (type: PortType) => typeLabel(type);
 
 const ALL_TYPES: PortType[] = ["string", "int", "float", "boolean", "array", "object"];
 

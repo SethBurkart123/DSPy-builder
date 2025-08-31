@@ -1,5 +1,4 @@
 import { CustomSchema, SchemaField, PortType } from "@/components/flowbuilder/types";
-import { isValidPythonIdentifier, getPythonIdentifierError } from "./python-identifier-utils";
 
 const SCHEMAS_STORAGE_KEY = "dspy_custom_schemas";
 
