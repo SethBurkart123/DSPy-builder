@@ -12,10 +12,15 @@ export default function Palette({
   open,
   onClose,
   onChoose,
+  connectionContext,
 }: {
   open: boolean;
   onClose: () => void;
   onChoose: (kind: NodeKind) => void;
+  connectionContext?: {
+    portType: string;
+    isFromOutput: boolean;
+  };
 }) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
