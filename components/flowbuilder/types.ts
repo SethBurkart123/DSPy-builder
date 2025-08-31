@@ -20,8 +20,9 @@ export interface SchemaField {
   description?: string;
   required: boolean;
   arrayItemType?: PortType;
-  arrayItemSchema?: CustomSchema;
-  objectSchema?: CustomSchema;
+  // Store references by id instead of embedding full schemas
+  arrayItemSchemaId?: string;
+  objectSchemaId?: string;
 }
 
 export interface CustomSchema {
@@ -29,8 +30,6 @@ export interface CustomSchema {
   name: string;
   description?: string;
   fields: SchemaField[];
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export type NodeKind = "chainofthought" | "predict" | "input" | "output";

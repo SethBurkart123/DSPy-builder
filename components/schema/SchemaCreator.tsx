@@ -131,7 +131,7 @@ export function SchemaCreator({
       newFields[editingFieldForNested] = {
         ...newFields[editingFieldForNested],
         type: "object",
-        objectSchema: schema,
+        objectSchemaId: schema.id,
       };
       setFields(newFields);
     }
@@ -145,7 +145,7 @@ export function SchemaCreator({
     if (!name || fields.length === 0) return "";
     
     try {
-      return schemaManager.exportToDSPy({ name, description, fields, id: "", createdAt: new Date(), updatedAt: new Date() });
+      return schemaManager.exportToDSPy({ name, description, fields, id: "" });
     } catch {
       return "// Error generating code preview";
     }
@@ -220,7 +220,8 @@ export function SchemaCreator({
                       onMoveDown={index < fields.length - 1 ? () => moveField(index, "down") : undefined}
                       availableSchemas={availableSchemas.filter(s => s.id !== initialSchema?.id)}
                       onCreateNestedSchema={depth < 2 ? () => handleCreateNestedSchema(index) : undefined}
-                      onEditNestedSchema={depth < 2 && fields[index].objectSchema ? (schema) => handleEditNestedSchema(index, schema) : undefined}
+                      onEditNestedSchema={depth < 2 && fields[index].objectSchemaId ? (schema) => handleEditNestedSchema(index, schema) : undefined}
+                      rootSchemaId={initialSchema?.id}
                     />
                   ))}
                 </div>

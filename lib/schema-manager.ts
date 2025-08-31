@@ -25,12 +25,7 @@ export class SchemaManager {
       const stored = localStorage.getItem(SCHEMAS_STORAGE_KEY);
       if (stored) {
         const schemas = JSON.parse(stored) as CustomSchema[];
-        schemas.forEach(schema => {
-          // Convert date strings back to Date objects
-          schema.createdAt = new Date(schema.createdAt);
-          schema.updatedAt = new Date(schema.updatedAt);
-          this.schemas.set(schema.id, schema);
-        });
+        schemas.forEach((s) => this.schemas.set(s.id, s));
       }
     } catch (error) {
       console.error("Failed to load schemas from storage:", error);
@@ -49,22 +44,18 @@ export class SchemaManager {
   }
 
   getAllSchemas(): CustomSchema[] {
-    return Array.from(this.schemas.values()).sort((a, b) => 
-      b.updatedAt.getTime() - a.updatedAt.getTime()
-    );
+    // Sort by name for stable ordering
+    return Array.from(this.schemas.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   getSchema(id: string): CustomSchema | undefined {
     return this.schemas.get(id);
   }
 
-  saveSchema(schema: Omit<CustomSchema, "id" | "createdAt" | "updatedAt">): CustomSchema {
-    const now = new Date();
+  saveSchema(schema: Omit<CustomSchema, "id">): CustomSchema {
     const newSchema: CustomSchema = {
       ...schema,
       id: generateSchemaId(),
-      createdAt: now,
-      updatedAt: now,
     };
     
     this.schemas.set(newSchema.id, newSchema);
@@ -72,14 +63,13 @@ export class SchemaManager {
     return newSchema;
   }
 
-  updateSchema(id: string, updates: Partial<Omit<CustomSchema, "id" | "createdAt">>): CustomSchema | null {
+  updateSchema(id: string, updates: Partial<Omit<CustomSchema, "id">>): CustomSchema | null {
     const existing = this.schemas.get(id);
     if (!existing) return null;
 
     const updated: CustomSchema = {
       ...existing,
       ...updates,
-      updatedAt: new Date(),
     };
 
     this.schemas.set(id, updated);
@@ -105,8 +95,28 @@ export class SchemaManager {
     };
   }
 
+  // Detect whether adding `candidateId` under `rootId` would create a cycle
+  wouldIntroduceCycle(rootId: string, candidateId: string): boolean {
+    if (rootId === candidateId) return true;
+    const visited = new Set<string>();
+    const stack = [candidateId];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      if (id === rootId) return true;
+      const s = this.schemas.get(id);
+      if (!s) continue;
+      for (const f of s.fields) {
+        if (f.objectSchemaId) stack.push(f.objectSchemaId);
+        if (f.arrayItemSchemaId) stack.push(f.arrayItemSchemaId);
+      }
+    }
+    return false;
+  }
+
   // Schema validation
-  validateSchema(schema: Omit<CustomSchema, "id" | "createdAt" | "updatedAt">): string[] {
+  validateSchema(schema: Omit<CustomSchema, "id">): string[] {
     const errors: string[] = [];
     
     if (!schema.name.trim()) {
@@ -134,7 +144,7 @@ export class SchemaManager {
       }
 
       // Validate object type has schema
-      if (field.type === "object" && !field.objectSchema) {
+      if (field.type === "object" && !field.objectSchemaId) {
         errors.push(`Field "${field.name}": Object type requires schema specification`);
       }
     });
@@ -163,14 +173,20 @@ export class SchemaManager {
         case "array":
           if (field.arrayItemType === "string") {
             fieldDef += "List[str]";
-          } else if (field.arrayItemSchema) {
-            fieldDef += `List[${field.arrayItemSchema.name}]`;
+          } else if (field.arrayItemSchemaId) {
+            const s = this.schemas.get(field.arrayItemSchemaId);
+            fieldDef += `List[${s?.name || 'Any'}]`;
           } else {
             fieldDef += "List";
           }
           break;
         case "object":
-          fieldDef += field.objectSchema?.name || "dict";
+          if (field.objectSchemaId) {
+            const s = this.schemas.get(field.objectSchemaId);
+            fieldDef += s?.name || "dict";
+          } else {
+            fieldDef += "dict";
+          }
           break;
         default:
           fieldDef += "str";

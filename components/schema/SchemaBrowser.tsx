@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Package, Edit, Trash2, Copy, Code, Search, Plus } from "lucide-react";
+import { Package, Edit, Trash2, Copy, Code, Search, Plus, Type, List, ToggleLeft, Hash, Binary, Layers } from "lucide-react";
 import { CustomSchema } from "@/components/flowbuilder/types";
 import { schemaManager } from "@/lib/schema-manager";
 import {
@@ -66,6 +66,78 @@ export function SchemaBrowser({
     (schema.description || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getTypeLabel = (t: string) => {
+    switch (t) {
+      case "string":
+        return "Text";
+      case "string[]":
+        return "Text Array";
+      case "boolean":
+        return "Boolean";
+      case "float":
+        return "Decimal";
+      case "int":
+        return "Integer";
+      case "object":
+        return "Object";
+      case "array":
+        return "Array";
+      default:
+        return t;
+    }
+  };
+
+  const getTypeIcon = (t: string) => {
+    switch (t) {
+      case "string":
+        return <Type className="h-3 w-3" />;
+      case "string[]":
+        return <List className="h-3 w-3" />;
+      case "boolean":
+        return <ToggleLeft className="h-3 w-3" />;
+      case "float":
+        return <Hash className="h-3 w-3" />;
+      case "int":
+        return <Binary className="h-3 w-3" />;
+      case "object":
+        return <Package className="h-3 w-3" />;
+      case "array":
+        return <Layers className="h-3 w-3" />;
+      default:
+        return <Type className="h-3 w-3" />;
+    }
+  };
+
+  // Render nested structure of a schema up to a sane depth
+  const renderNestedSchema = (schema: CustomSchema, level: number = 1, maxLevels: number = 4) => {
+    if (!schema || level > maxLevels) return null;
+    return (
+      <div className={`mt-2 space-y-2 rounded border bg-muted/40 p-3 ${level > 1 ? 'ml-3' : ''}`}>
+        {schema.fields.map((f) => (
+          <div key={`${schema.id}-${f.id}-${level}`} className="text-xs">
+            <div className="flex items-center gap-2">
+              {getTypeIcon(f.type as string)}
+              <span className="font-medium">{f.name}</span>
+              <span className="rounded bg-muted px-2 py-0.5 text-[10px]">
+                {f.type === 'array' && f.arrayItemType ? `${f.arrayItemType}[]` : getTypeLabel(f.type as string)}
+              </span>
+              {!f.required && <span className="text-muted-foreground">optional</span>}
+            </div>
+            {f.description && (
+              <div className="mt-1 text-muted-foreground">{f.description}</div>
+            )}
+            {f.type === 'object' && (f as any).objectSchemaId && (
+              <div className="mt-2">{schemaManager.getSchema((f as any).objectSchemaId) && renderNestedSchema(schemaManager.getSchema((f as any).objectSchemaId)!, level + 1, maxLevels)}</div>
+            )}
+            {f.type === 'array' && (f as any).arrayItemSchemaId && (
+              <div className="mt-2">{schemaManager.getSchema((f as any).arrayItemSchemaId) && renderNestedSchema(schemaManager.getSchema((f as any).arrayItemSchemaId)!, level + 1, maxLevels)}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-6xl p-0">
@@ -121,20 +193,15 @@ export function SchemaBrowser({
                         <Package className="h-4 w-4" />
                         <span className="font-medium text-sm">{schema.name}</span>
                       </div>
-                      {schema.description && (
+                      {schema.description ? (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          {schema.description}
+                          {schema.description} {'\u2022'}  {schema.fields.length} field{schema.fields.length !== 1 ? 's' : ''}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {schema.fields.length} field{schema.fields.length !== 1 ? 's' : ''}
                         </p>
                       )}
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs text-muted-foreground">
-                          {schema.fields.length} field{schema.fields.length !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-xs text-muted-foreground">•</span>
-                        <span className="text-xs text-muted-foreground">
-                          {schema.updatedAt.toLocaleDateString()}
-                        </span>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -170,8 +237,6 @@ export function SchemaBrowser({
                     )}
                     <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
                       <span>{selectedSchema.fields.length} fields</span>
-                      <span>Created {selectedSchema.createdAt.toLocaleDateString()}</span>
-                      <span>Updated {selectedSchema.updatedAt.toLocaleDateString()}</span>
                     </div>
                   </div>
 
@@ -210,34 +275,26 @@ export function SchemaBrowser({
                   <div className="space-y-3">
                     {selectedSchema.fields.map((field) => (
                       <div key={field.id} className="rounded border bg-muted/40 p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{field.name}</span>
-                              <span className="rounded bg-muted px-2 py-1 text-xs">
-                                {field.type}
-                                {field.type === "array" && field.arrayItemType && `<${field.arrayItemType}>`}
-                              </span>
-                              {!field.required && (
-                                <span className="text-xs text-muted-foreground">optional</span>
-                              )}
-                            </div>
-                            {field.description && (
-                              <p className="text-sm text-muted-foreground mt-2">{field.description}</p>
-                            )}
-                            
-                            {/* Show nested schema info */}
-                            {field.type === "object" && field.objectSchema && (
-                              <div className="mt-2 text-sm">
-                                References: {field.objectSchema.name}
-                              </div>
-                            )}
-                            {field.type === "array" && field.arrayItemSchema && (
-                              <div className="mt-2 text-sm">
-                                Array of: {field.arrayItemSchema.name}
-                              </div>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            {getTypeIcon(field.type as string)}
+                            <span className="font-medium">{field.name}</span>
+                            <span className="rounded bg-muted px-2 py-0.5 text-xs">
+                              {field.type === 'array' && field.arrayItemType ? `${field.arrayItemType}[]` : getTypeLabel(field.type as string)}
+                            </span>
+                            {!field.required && (
+                              <span className="text-xs text-muted-foreground">optional</span>
                             )}
                           </div>
+                          {field.description && (
+                            <p className="text-sm text-muted-foreground">{field.description}</p>
+                          )}
+                          {field.type === 'object' && field.objectSchemaId && (
+                            <div>{schemaManager.getSchema(field.objectSchemaId) && renderNestedSchema(schemaManager.getSchema(field.objectSchemaId)!)}</div>
+                          )}
+                          {field.type === 'array' && field.arrayItemSchemaId && (
+                            <div>{schemaManager.getSchema(field.arrayItemSchemaId) && renderNestedSchema(schemaManager.getSchema(field.arrayItemSchemaId)!)}</div>
+                          )}
                         </div>
                       </div>
                     ))}

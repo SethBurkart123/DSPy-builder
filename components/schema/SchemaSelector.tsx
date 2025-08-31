@@ -101,10 +101,6 @@ export function SchemaSelector({
                     <span className="text-xs text-muted-foreground">
                       {schema.fields.length} field{schema.fields.length !== 1 ? 's' : ''}
                     </span>
-                    <span className="text-xs text-muted-foreground">•</span>
-                    <span className="text-xs text-muted-foreground">
-                      {schema.updatedAt.toLocaleDateString()}
-                    </span>
                   </div>
                 </div>
               </div>
