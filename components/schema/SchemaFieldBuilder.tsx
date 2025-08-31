@@ -12,16 +12,24 @@ import {
   Layers,
   GripVertical,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Plus
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { SchemaField, PortType, CustomSchema } from "@/components/flowbuilder/types";
 import { schemaManager } from "@/lib/schema-manager";
+import { filterPythonIdentifier, getPythonIdentifierError, toSnakeCase } from "@/lib/python-identifier-utils";
+import { SchemaSelector } from "./SchemaSelector";
 
 const getTypeIcon = (type: PortType) => {
   switch (type) {
@@ -76,6 +84,7 @@ interface SchemaFieldBuilderProps {
   showMoveButtons?: boolean;
   availableSchemas: CustomSchema[];
   depth?: number;
+  onCreateNestedSchema?: () => void;
 }
 
 export function SchemaFieldBuilder({
@@ -86,12 +95,29 @@ export function SchemaFieldBuilder({
   onMoveDown,
   showMoveButtons = true,
   availableSchemas,
-  depth = 0
+  depth = 0,
+  onCreateNestedSchema
 }: SchemaFieldBuilderProps) {
   const [expanded, setExpanded] = useState(false);
+  const [schemaSelectorOpen, setSchemaSelectorOpen] = useState(false);
+  const [selectorContext, setSelectorContext] = useState<'object' | 'arrayItem' | null>(null);
 
   const updateField = (updates: Partial<SchemaField>) => {
     onUpdate({ ...field, ...updates });
+  };
+
+  const handleSchemaSelect = (schema: CustomSchema) => {
+    if (selectorContext === 'object') {
+      updateField({ objectSchema: schema });
+    } else if (selectorContext === 'arrayItem') {
+      updateField({ arrayItemSchema: schema });
+    }
+    setSelectorContext(null);
+  };
+
+  const openSchemaSelector = (context: 'object' | 'arrayItem') => {
+    setSelectorContext(context);
+    setSchemaSelectorOpen(true);
   };
 
   const handleTypeChange = (newType: PortType) => {
@@ -115,13 +141,13 @@ export function SchemaFieldBuilder({
     return (
       <div className="ml-4 mt-2 space-y-2 border-l-2 border-gray-200 pl-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-600">Array contains:</span>
+          <Label className="text-xs text-gray-600">Array contains:</Label>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-gray-50">
+              <Button variant="outline" size="sm">
                 {field.arrayItemType ? getTypeIcon(field.arrayItemType) : <Type className="h-3 w-3" />}
-                {field.arrayItemType ? getTypeLabel(field.arrayItemType) : "Select type"}
-              </button>
+                <span className="ml-1">{field.arrayItemType ? getTypeLabel(field.arrayItemType) : "Select type"}</span>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               {ALL_TYPES.filter(t => t !== "array").map((type) => (
@@ -140,26 +166,35 @@ export function SchemaFieldBuilder({
 
         {field.arrayItemType === "object" && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-600">Object schema:</span>
+            <Label className="text-xs text-gray-600">Object schema:</Label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-gray-50">
-                  <Package className="h-3 w-3" />
+                <Button variant="outline" size="sm">
+                  <Package className="h-3 w-3 mr-1" />
                   {field.arrayItemSchema?.name || "Select schema"}
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                {availableSchemas.map((schema) => (
-                  <DropdownMenuItem
-                    key={schema.id}
-                    onClick={() => updateField({ arrayItemSchema: schema })}
-                    className="flex items-center gap-2"
-                  >
-                    <Package className="h-3 w-3" />
-                    {schema.name}
-                  </DropdownMenuItem>
-                ))}
-                {availableSchemas.length === 0 && (
+                {onCreateNestedSchema && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={onCreateNestedSchema}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Create New Schema
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuItem
+                  onClick={() => openSchemaSelector('arrayItem')}
+                  className="flex items-center gap-2"
+                >
+                  <Package className="h-3 w-3" />
+                  Select Schema...
+                </DropdownMenuItem>
+                {availableSchemas.length === 0 && !onCreateNestedSchema && (
                   <div className="px-2 py-1 text-xs text-gray-500">No schemas available</div>
                 )}
               </DropdownMenuContent>
@@ -176,26 +211,35 @@ export function SchemaFieldBuilder({
     return (
       <div className="ml-4 mt-2 space-y-2 border-l-2 border-gray-200 pl-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-600">Object schema:</span>
+          <Label className="text-xs text-gray-600">Object schema:</Label>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-gray-50">
-                <Package className="h-3 w-3" />
+              <Button variant="outline" size="sm">
+                <Package className="h-3 w-3 mr-1" />
                 {field.objectSchema?.name || "Select schema"}
-              </button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              {availableSchemas.map((schema) => (
-                <DropdownMenuItem
-                  key={schema.id}
-                  onClick={() => updateField({ objectSchema: schema })}
-                  className="flex items-center gap-2"
-                >
-                  <Package className="h-3 w-3" />
-                  {schema.name}
-                </DropdownMenuItem>
-              ))}
-              {availableSchemas.length === 0 && (
+              {onCreateNestedSchema && (
+                <>
+                  <DropdownMenuItem
+                    onClick={onCreateNestedSchema}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Create New Schema
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem
+                onClick={() => openSchemaSelector('object')}
+                className="flex items-center gap-2"
+              >
+                <Package className="h-3 w-3" />
+                Select Schema...
+              </DropdownMenuItem>
+              {availableSchemas.length === 0 && !onCreateNestedSchema && (
                 <div className="px-2 py-1 text-xs text-gray-500">No schemas available</div>
               )}
             </DropdownMenuContent>
@@ -204,13 +248,15 @@ export function SchemaFieldBuilder({
 
         {field.objectSchema && (
           <div className="mt-2">
-            <button
+            <Button
+              variant="link"
+              size="sm"
               onClick={() => setExpanded(!expanded)}
-              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+              className="p-0 h-auto text-xs"
             >
-              {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {expanded ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
               Preview {field.objectSchema.name} fields
-            </button>
+            </Button>
             
             {expanded && (
               <div className="mt-2 space-y-1 rounded border bg-gray-50 p-2">
@@ -245,19 +291,27 @@ export function SchemaFieldBuilder({
           <div className="flex-1 space-y-3">
             {/* Field name and type */}
             <div className="flex items-center gap-2">
-              <input
-                className="flex-1 rounded border px-2 py-1 text-sm"
-                value={field.name}
-                onChange={(e) => updateField({ name: e.target.value })}
-                placeholder="Field name"
-              />
+              <div className="flex-1 space-y-1">
+                <Input
+                  value={field.name}
+                  onChange={(e) => {
+                    const filtered = filterPythonIdentifier(e.target.value);
+                    updateField({ name: filtered });
+                  }}
+                  placeholder="Field name (e.g., user_name, is_active)"
+                  className={getPythonIdentifierError(field.name) ? "border-red-500" : ""}
+                />
+                {getPythonIdentifierError(field.name) && (
+                  <p className="text-xs text-red-600">{getPythonIdentifierError(field.name)}</p>
+                )}
+              </div>
               
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-gray-50">
+                  <Button variant="outline" size="sm">
                     {getTypeIcon(field.type)}
-                    {getTypeLabel(field.type)}
-                  </button>
+                    <span className="ml-1">{getTypeLabel(field.type)}</span>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {ALL_TYPES.map((type) => (
@@ -283,22 +337,24 @@ export function SchemaFieldBuilder({
                 Required
               </label>
 
-              <button 
-                className="text-red-600 hover:bg-red-50 rounded p-1" 
+              <Button 
+                variant="ghost"
+                size="sm"
                 onClick={onDelete}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 p-2"
                 title="Delete field"
               >
                 <Trash2 className="h-3 w-3" />
-              </button>
+              </Button>
             </div>
 
             {/* Description */}
             <div>
-              <textarea
-                className="w-full rounded border px-2 py-1 text-xs"
+              <Textarea
+                className="text-xs"
                 value={field.description || ""}
                 onChange={(e) => updateField({ description: e.target.value })}
-                placeholder="Description (helps with prompt engineering)"
+                placeholder="Description (optional)"
                 rows={2}
               />
             </div>
@@ -309,6 +365,18 @@ export function SchemaFieldBuilder({
           </div>
         </div>
       </div>
+
+      {/* Schema Selector Modal */}
+      <SchemaSelector
+        isOpen={schemaSelectorOpen}
+        onClose={() => {
+          setSchemaSelectorOpen(false);
+          setSelectorContext(null);
+        }}
+        onSelect={handleSchemaSelect}
+        title={selectorContext === 'arrayItem' ? "Select Array Item Schema" : "Select Object Schema"}
+        description={selectorContext === 'arrayItem' ? "Choose a schema for array items" : "Choose a schema for this object field"}
+      />
     </div>
   );
 }

@@ -4,6 +4,15 @@ import { useState, useEffect } from "react";
 import { Package, Edit, Trash2, Copy, Code, Search, Plus } from "lucide-react";
 import { CustomSchema } from "@/components/flowbuilder/types";
 import { schemaManager } from "@/lib/schema-manager";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface SchemaBrowserProps {
   isOpen: boolean;
@@ -57,40 +66,28 @@ export function SchemaBrowser({
     (schema.description || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-lg bg-white shadow-xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b bg-gray-50 px-6 py-4">
-          <div>
-            <h2 className="text-lg font-semibold">
-              {mode === "select" ? "Select Schema" : "Schema Library"}
-            </h2>
-            <p className="text-sm text-gray-600">
-              {mode === "select" 
-                ? "Choose a schema to use in your workflow"
-                : "Manage your custom object schemas"
-              }
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onCreateNew}
-              className="flex items-center gap-2 rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
-            >
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-6xl">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle>
+                {mode === "select" ? "Select Schema" : "Schema Library"}
+              </DialogTitle>
+              <DialogDescription>
+                {mode === "select" 
+                  ? "Choose a schema to use in your workflow"
+                  : "Manage your custom object schemas"
+                }
+              </DialogDescription>
+            </div>
+            <Button onClick={onCreateNew}>
               <Plus className="h-4 w-4" />
               New Schema
-            </button>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              ×
-            </button>
+            </Button>
           </div>
-        </div>
+        </DialogHeader>
 
         <div className="flex h-[600px]">
           {/* Schema List */}
@@ -99,12 +96,12 @@ export function SchemaBrowser({
             <div className="border-b p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
+                <Input
                   type="text"
                   placeholder="Search schemas..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full rounded border pl-9 pr-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  className="pl-9"
                 />
               </div>
             </div>
@@ -152,12 +149,13 @@ export function SchemaBrowser({
                   <p className="mt-2 text-sm text-gray-600">
                     {searchTerm ? "No schemas match your search" : "No schemas created yet"}
                   </p>
-                  <button
+                  <Button
+                    variant="link"
                     onClick={onCreateNew}
-                    className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+                    className="mt-2"
                   >
                     Create your first schema
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -182,34 +180,34 @@ export function SchemaBrowser({
 
                   <div className="flex items-center gap-2">
                     {mode === "select" && onSelect && (
-                      <button
+                      <Button
                         onClick={() => onSelect(selectedSchema)}
-                        className="flex items-center gap-2 rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
                       >
                         Select Schema
-                      </button>
+                      </Button>
                     )}
-                    <button
+                    <Button
+                      variant="outline"
                       onClick={() => onEdit(selectedSchema)}
-                      className="flex items-center gap-1 rounded border px-3 py-2 text-sm hover:bg-gray-50"
                     >
                       <Edit className="h-4 w-4" />
                       Edit
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="outline"
                       onClick={() => handleCopyCode(selectedSchema)}
-                      className="flex items-center gap-1 rounded border px-3 py-2 text-sm hover:bg-gray-50"
                     >
                       <Code className="h-4 w-4" />
                       Copy Code
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="outline"
                       onClick={() => handleDelete(selectedSchema)}
-                      className="flex items-center gap-1 rounded border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                      className="text-red-600 border-red-200 hover:bg-red-50"
                     >
                       <Trash2 className="h-4 w-4" />
                       Delete
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -273,7 +271,7 @@ export function SchemaBrowser({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

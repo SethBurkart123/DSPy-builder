@@ -91,7 +91,7 @@ export function createDemoSchemas() {
   });
 
   // User Profile schema
-  schemaManager.saveSchema({
+  const userProfileSchema = schemaManager.saveSchema({
     name: "UserProfile",
     description: "User profile information extracted from text",
     fields: [
@@ -127,5 +127,53 @@ export function createDemoSchemas() {
     ],
   });
 
-  console.log("Demo schemas created successfully!");
+  // Complex nested schema showcasing nested object functionality
+  schemaManager.saveSchema({
+    name: "ProjectReport",
+    description: "Comprehensive project report with nested team and answer structures",
+    fields: [
+      {
+        id: `field_${Math.random().toString(36).slice(2, 9)}`,
+        name: "project_name",
+        type: "string",
+        description: "Name of the project",
+        required: true,
+      },
+      {
+        id: `field_${Math.random().toString(36).slice(2, 9)}`,
+        name: "team_lead",
+        type: "object",
+        objectSchema: userProfileSchema,
+        description: "Team lead information",
+        required: true,
+      },
+      {
+        id: `field_${Math.random().toString(36).slice(2, 9)}`,
+        name: "key_findings",
+        type: "array",
+        arrayItemType: "object",
+        arrayItemSchema: answerSchema,
+        description: "List of key findings with confidence scores",
+        required: true,
+      },
+      {
+        id: `field_${Math.random().toString(36).slice(2, 9)}`,
+        name: "team_members",
+        type: "array",
+        arrayItemType: "object",
+        arrayItemSchema: userProfileSchema,
+        description: "List of team members",
+        required: false,
+      },
+      {
+        id: `field_${Math.random().toString(36).slice(2, 9)}`,
+        name: "completion_date",
+        type: "string",
+        description: "Project completion date in ISO format",
+        required: false,
+      },
+    ],
+  });
+
+  console.log("Demo schemas created successfully with nested examples!");
 }

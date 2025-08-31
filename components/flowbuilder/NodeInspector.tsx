@@ -23,8 +23,11 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SchemaCreator } from "@/components/schema/SchemaCreator";
 import { SchemaBrowser } from "@/components/schema/SchemaBrowser";
+import { SchemaSelector } from "@/components/schema/SchemaSelector";
 import { schemaManager } from "@/lib/schema-manager";
 
 const ALL_TYPES: PortType[] = ["string", "string[]", "boolean", "float", "int", "array", "object"];
@@ -88,6 +91,7 @@ export default function NodeInspector({
   
   const [schemaCreatorOpen, setSchemaCreatorOpen] = useState(false);
   const [schemaBrowserOpen, setSchemaBrowserOpen] = useState(false);
+  const [schemaSelectorOpen, setSchemaSelectorOpen] = useState(false);
   const [editingPortIndex, setEditingPortIndex] = useState<{ direction: "inputs" | "outputs", index: number } | null>(null);
   const [availableSchemas, setAvailableSchemas] = useState<CustomSchema[]>([]);
 
@@ -135,14 +139,19 @@ export default function NodeInspector({
     }
   };
 
+  const handleSelectExistingSchema = (direction: "inputs" | "outputs", idx: number) => {
+    setEditingPortIndex({ direction, index: idx });
+    setSchemaSelectorOpen(true);
+  };
+
   const renderPortTypeDropdown = (port: Port, direction: "inputs" | "outputs", idx: number) => {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-gray-50">
+          <Button variant="outline" size="sm">
             {getTypeIcon(port.type)}
             {port.type === "object" && port.customSchema ? port.customSchema.name : getTypeLabel(port.type)}
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {ALL_TYPES.filter(t => t !== "object").map((type) => (
@@ -173,10 +182,7 @@ export default function NodeInspector({
           </DropdownMenuItem>
           {availableSchemas.length > 0 && (
             <DropdownMenuItem
-              onClick={() => {
-                setEditingPortIndex({ direction, index: idx });
-                handleBrowseSchemas();
-              }}
+              onClick={() => handleSelectExistingSchema(direction, idx)}
               className="flex items-center gap-2"
             >
               <Library className="h-3 w-3" />
@@ -203,30 +209,33 @@ export default function NodeInspector({
             {data?.inputs?.map((p, idx) => (
               <div key={p.id}>
                 <div className="flex items-center gap-2">
-                  <input
-                    className="flex-1 rounded border px-2 py-1 text-xs"
+                  <Input
+                    className="flex-1"
                     value={p.name}
                     onChange={(e) => updatePort("inputs", idx, { name: e.target.value })}
                     placeholder="Port name"
                   />
                   {renderPortTypeDropdown(p, "inputs", idx)}
-                  <button 
-                    className="flex items-center gap-1 text-xs text-red-600 hover:bg-red-50 rounded p-1.5" 
+                  <Button 
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     onClick={() => onRemovePort("inputs", p.id)}
                   >
                     <Trash2 className="h-3 w-3" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
           </div>
-          <button 
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded border-2 border-dashed border-gray-300 py-2 text-xs text-gray-600 hover:border-gray-400 hover:bg-gray-50" 
+          <Button 
+            variant="outline"
+            className="mt-3 w-full border-dashed" 
             onClick={() => onAddPort("inputs")}
           >
             <Plus className="h-4 w-4" />
             Add Input
-          </button>
+          </Button>
         </section>
 
         <section>
@@ -237,51 +246,57 @@ export default function NodeInspector({
             {data?.outputs?.map((p, idx) => (
               <div key={p.id}>
                 <div className="flex items-center gap-2">
-                  <input
-                    className="flex-1 rounded border px-2 py-1 text-xs"
+                  <Input
+                    className="flex-1"
                     value={p.name}
                     onChange={(e) => updatePort("outputs", idx, { name: e.target.value })}
                     placeholder="Port name"
                   />
                   {renderPortTypeDropdown(p, "outputs", idx)}
-                  <button 
-                    className="flex items-center gap-1 text-xs text-red-600 hover:bg-red-50 rounded px-1 py-1" 
+                  <Button 
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     onClick={() => onRemovePort("outputs", p.id)}
                   >
                     <Trash2 className="h-3 w-3" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
           </div>
-          <button 
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded border-2 border-dashed border-gray-300 py-2 text-xs text-gray-600 hover:border-gray-400 hover:bg-gray-50" 
+          <Button 
+            variant="outline"
+            className="mt-3 w-full border-dashed" 
             onClick={() => onAddPort("outputs")}
           >
             <Plus className="h-4 w-4" />
             Add Output
-          </button>
+          </Button>
         </section>
 
         {/* Schema Management */}
         <section>
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-xs font-medium uppercase text-muted-foreground">Schema Library</h4>
-            <button
+            <Button
+              variant="link"
+              size="sm"
               onClick={handleBrowseSchemas}
-              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+              className="h-auto p-0 text-xs"
             >
               <Library className="h-3 w-3" />
               Browse
-            </button>
+            </Button>
           </div>
-          <button
+          <Button
+            variant="outline"
+            className="w-full border-dashed"
             onClick={handleCreateSchema}
-            className="flex w-full items-center justify-center gap-2 rounded border-2 border-dashed border-gray-300 py-2 text-xs text-gray-600 hover:border-gray-400 hover:bg-gray-50"
           >
             <Plus className="h-4 w-4" />
             Create Custom Schema
-          </button>
+          </Button>
         </section>
       </div>
 
@@ -312,6 +327,18 @@ export default function NodeInspector({
         }}
         onSelect={handleSchemaSelected}
         mode={editingPortIndex ? "select" : "browse"}
+      />
+
+      {/* Schema Selector Modal */}
+      <SchemaSelector
+        isOpen={schemaSelectorOpen}
+        onClose={() => {
+          setSchemaSelectorOpen(false);
+          setEditingPortIndex(null);
+        }}
+        onSelect={handleSchemaSelected}
+        title="Select Schema"
+        description="Choose a schema for this port"
       />
     </div>
   );

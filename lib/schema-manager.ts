@@ -1,4 +1,5 @@
 import { CustomSchema, SchemaField, PortType } from "@/components/flowbuilder/types";
+import { isValidPythonIdentifier, getPythonIdentifierError } from "./python-identifier-utils";
 
 const SCHEMAS_STORAGE_KEY = "dspy_custom_schemas";
 
@@ -182,8 +183,8 @@ export class SchemaManager {
       return fieldDef;
     });
 
-    return `class ${schema.name}(BaseModel):
-    """${schema.description || `Auto-generated schema for ${schema.name}`}"""
+    return `class ${schema.name}(BaseModel):${schema.description ? `
+    """${schema.description}"""` : ""}
     ${fields.join('\n    ')}`;
   }
 }
