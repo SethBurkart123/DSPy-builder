@@ -48,6 +48,7 @@ export function SchemaCreator({
   // Nested schema creation state
   const [nestedSchemaOpen, setNestedSchemaOpen] = useState(false);
   const [editingFieldForNested, setEditingFieldForNested] = useState<number | null>(null);
+  const [nestedEditingSchema, setNestedEditingSchema] = useState<CustomSchema | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -114,6 +115,13 @@ export function SchemaCreator({
 
   const handleCreateNestedSchema = (fieldIndex: number) => {
     setEditingFieldForNested(fieldIndex);
+    setNestedEditingSchema(null);
+    setNestedSchemaOpen(true);
+  };
+
+  const handleEditNestedSchema = (fieldIndex: number, schema: CustomSchema) => {
+    setEditingFieldForNested(fieldIndex);
+    setNestedEditingSchema(schema);
     setNestedSchemaOpen(true);
   };
 
@@ -129,6 +137,7 @@ export function SchemaCreator({
     }
     setNestedSchemaOpen(false);
     setEditingFieldForNested(null);
+    setNestedEditingSchema(null);
     setAvailableSchemas(schemaManager.getAllSchemas());
   };
 
@@ -171,10 +180,10 @@ export function SchemaCreator({
                       setName(filtered);
                     }}
                     placeholder="e.g., Answer, DocumentAnalysis, UserProfile"
-                    className={getPythonIdentifierError(name) ? "border-red-500" : ""}
+                    className={getPythonIdentifierError(name) ? "border-destructive" : ""}
                   />
                   {getPythonIdentifierError(name) && (
-                    <p className="text-xs text-red-600">{getPythonIdentifierError(name)}</p>
+                    <p className="text-xs text-destructive">{getPythonIdentifierError(name)}</p>
                   )}
                 </div>
                 
@@ -193,7 +202,7 @@ export function SchemaCreator({
               {/* Fields */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-gray-700">Fields</h3>
+                  <h3 className="text-sm font-medium text-foreground">Fields</h3>
                   <Button onClick={addField} size="sm">
                     <Plus className="h-3 w-3" />
                     Add Field
@@ -211,14 +220,15 @@ export function SchemaCreator({
                       onMoveDown={index < fields.length - 1 ? () => moveField(index, "down") : undefined}
                       availableSchemas={availableSchemas.filter(s => s.id !== initialSchema?.id)}
                       onCreateNestedSchema={depth < 2 ? () => handleCreateNestedSchema(index) : undefined}
+                      onEditNestedSchema={depth < 2 && fields[index].objectSchema ? (schema) => handleEditNestedSchema(index, schema) : undefined}
                     />
                   ))}
                 </div>
 
                 {fields.length === 0 && (
-                  <div className="rounded border-2 border-dashed border-gray-300 py-8 text-center">
-                    <FileText className="mx-auto h-8 w-8 text-gray-400" />
-                    <p className="mt-2 text-sm text-gray-600">No fields defined</p>
+                  <div className="rounded border-2 border-dashed border-border py-8 text-center">
+                    <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
+                    <p className="mt-2 text-sm text-muted-foreground">No fields defined</p>
                     <Button
                       variant="link"
                       onClick={addField}
@@ -232,12 +242,12 @@ export function SchemaCreator({
 
               {/* Errors */}
               {errors.length > 0 && (
-                <div className="mb-6 rounded border border-red-200 bg-red-50 p-4">
+                <div className="mb-6 rounded border bg-destructive/10 p-4">
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                    <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />
                     <div>
-                      <h4 className="text-sm font-medium text-red-800">Please fix the following errors:</h4>
-                      <ul className="mt-1 list-disc list-inside text-sm text-red-700">
+                      <h4 className="text-sm font-medium text-destructive">Please fix the following errors:</h4>
+                      <ul className="mt-1 list-disc list-inside text-sm text-destructive/90">
                         {errors.map((error, index) => (
                           <li key={index}>{error}</li>
                         ))}
@@ -249,8 +259,8 @@ export function SchemaCreator({
             </div>
 
             {/* Preview Panel */}
-            <div className="w-80 border-l bg-gray-50">
-              <div className="border-b bg-gray-100 px-4 py-3">
+            <div className="w-80 border-l bg-muted/40">
+              <div className="border-b bg-muted/60 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Button
                     variant={!showPreview ? "default" : "ghost"}
@@ -273,34 +283,34 @@ export function SchemaCreator({
 
               <div className="h-full overflow-y-auto p-4">
                 {showPreview ? (
-                  <pre className="text-xs text-gray-800 whitespace-pre-wrap font-mono">
+                  <pre className="text-xs whitespace-pre-wrap font-mono text-foreground">
                     {generateDSPyCode()}
                   </pre>
                 ) : (
                   <div className="space-y-3">
                     {name && (
                       <div>
-                        <h4 className="text-sm font-medium text-gray-900">{name}</h4>
+                        <h4 className="text-sm font-medium text-foreground">{name}</h4>
                         {description && (
-                          <p className="text-xs text-gray-600 mt-1">{description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{description}</p>
                         )}
                       </div>
                     )}
                     
                     <div className="space-y-2">
                       {fields.map((field) => (
-                        <div key={field.id} className="rounded bg-white border p-2">
+                        <div key={field.id} className="rounded bg-card border p-2">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium">{field.name || "Unnamed"}</span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-muted-foreground">
                               {field.type === "array" && field.arrayItemType ? `${field.arrayItemType}[]` : field.type}
                             </span>
                           </div>
                           {field.description && (
-                            <p className="text-xs text-gray-600 mt-1">{field.description}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{field.description}</p>
                           )}
                           {!field.required && (
-                            <span className="text-xs text-gray-500">Optional</span>
+                            <span className="text-xs text-muted-foreground">Optional</span>
                           )}
                         </div>
                       ))}
@@ -330,11 +340,13 @@ export function SchemaCreator({
           onClose={() => {
             setNestedSchemaOpen(false);
             setEditingFieldForNested(null);
+            setNestedEditingSchema(null);
           }}
           onSave={handleNestedSchemaCreated}
           isNested={true}
-          title={`Create Schema for Field: ${editingFieldForNested !== null ? fields[editingFieldForNested]?.name || 'Unnamed' : ''}`}
+          title={`${nestedEditingSchema ? 'Edit' : 'Create'} Schema for Field: ${editingFieldForNested !== null ? fields[editingFieldForNested]?.name || 'Unnamed' : ''}`}
           depth={depth + 1}
+          initialSchema={nestedEditingSchema ?? undefined}
         />
       )}
     </>

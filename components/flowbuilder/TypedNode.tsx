@@ -86,7 +86,7 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
   const baseContentPadding = 24; // padding top + bottom
   const minContentHeight = maxPorts * portSpacing;
   const dropZoneHeight = 28; // Height for the drop zone
-  const showDropZone = dragState?.isDragging && isDragHovering && dragState.portType && dragState.sourceNodeId !== id;
+  const showDropZone = dragState?.isDragging && isDragHovering && dragState.portType && dragState.sourceNodeId !== id && data.kind !== 'input';
   const minTotalHeight = headerHeight + minContentHeight + baseContentPadding + (showDropZone ? dropZoneHeight : 0);
 
   const handleMouseEnter = useCallback(() => {

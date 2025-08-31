@@ -91,6 +91,7 @@ export default function NodeInspector({
   const title = useMemo(() => data?.title ?? "No selection", [data?.title]);
   
   const [schemaCreatorOpen, setSchemaCreatorOpen] = useState(false);
+  const [editingSchema, setEditingSchema] = useState<CustomSchema | null>(null);
   const [schemaBrowserOpen, setSchemaBrowserOpen] = useState(false);
   const [schemaSelectorOpen, setSchemaSelectorOpen] = useState(false);
   const [editingPortIndex, setEditingPortIndex] = useState<{ direction: "inputs" | "outputs", index: number } | null>(null);
@@ -103,6 +104,9 @@ export default function NodeInspector({
 
   if (!hasNode) return null;
 
+  const canEditInputs = data?.kind !== 'input';
+  const canEditOutputs = data?.kind !== 'output';
+
   function updatePort(direction: "inputs" | "outputs", idx: number, patch: Partial<Port>) {
     if (!data) return;
     const arr = [...(data[direction] || [])];
@@ -111,6 +115,7 @@ export default function NodeInspector({
   }
 
   const handleCreateSchema = () => {
+    setEditingSchema(null);
     setSchemaCreatorOpen(true);
   };
 
@@ -202,6 +207,7 @@ export default function NodeInspector({
       </div>
 
       <div className="mt-4 space-y-6">
+        {canEditInputs && (
         <section>
           <div className="mb-2">
             <h4 className="text-xs font-medium uppercase text-muted-foreground">Inputs</h4>
@@ -245,7 +251,9 @@ export default function NodeInspector({
             Add Input
           </Button>
         </section>
+        )}
 
+        {canEditOutputs && (
         <section>
           <div className="mb-2">
             <h4 className="text-xs font-medium uppercase text-muted-foreground">Outputs</h4>
@@ -293,6 +301,7 @@ export default function NodeInspector({
             Add Output
           </Button>
         </section>
+        )}
 
         {/* Schema Management */}
         <section>
@@ -325,8 +334,10 @@ export default function NodeInspector({
         onClose={() => {
           setSchemaCreatorOpen(false);
           setEditingPortIndex(null);
+          setEditingSchema(null);
         }}
         onSave={handleSchemaCreated}
+        initialSchema={editingSchema ?? undefined}
       />
 
       {/* Schema Browser Modal */}
@@ -338,11 +349,13 @@ export default function NodeInspector({
         }}
         onCreateNew={() => {
           setSchemaBrowserOpen(false);
+          setEditingSchema(null);
           setSchemaCreatorOpen(true);
         }}
         onEdit={(schema) => {
           setSchemaBrowserOpen(false);
-          // Could open schema editor here
+          setEditingSchema(schema);
+          setSchemaCreatorOpen(true);
         }}
         onSelect={handleSchemaSelected}
         mode={editingPortIndex ? "select" : "browse"}
@@ -362,4 +375,3 @@ export default function NodeInspector({
     </div>
   );
 }
-

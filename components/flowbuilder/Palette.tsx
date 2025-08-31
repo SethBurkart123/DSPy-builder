@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { NodeKind } from "./types";
 
 const OPTIONS: { key: NodeKind; label: string; description?: string }[] = [
+  { key: "input", label: "Input", description: "Single entry point for user input" },
   { key: "chainofthought", label: "Chain Of Thought", description: "Reason through steps with reasoning output" },
   { key: "predict", label: "Predict", description: "Make predictions without reasoning" },
+  { key: "output", label: "Output", description: "Final sink for pipeline outputs" },
 ];
 
 export default function Palette({
@@ -13,6 +15,7 @@ export default function Palette({
   onClose,
   onChoose,
   connectionContext,
+  hiddenKinds = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -21,6 +24,7 @@ export default function Palette({
     portType: string;
     isFromOutput: boolean;
   };
+  hiddenKinds?: NodeKind[];
 }) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -28,9 +32,10 @@ export default function Palette({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return OPTIONS;
-    return OPTIONS.filter((o) => o.label.toLowerCase().includes(q) || o.key.includes(q));
-  }, [query]);
+    const base = OPTIONS.filter((o) => !hiddenKinds.includes(o.key));
+    if (!q) return base;
+    return base.filter((o) => o.label.toLowerCase().includes(q) || o.key.includes(q));
+  }, [query, hiddenKinds]);
 
   useEffect(() => {
     if (open) {
@@ -97,4 +102,3 @@ export default function Palette({
     </div>
   );
 }
-

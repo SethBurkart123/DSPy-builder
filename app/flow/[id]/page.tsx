@@ -50,6 +50,14 @@ function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: st
   } else if (kind === "predict") {
     inputs = [makePort("prompt", requiredInputType || "string")];
     outputs = [makePort("output", "string")];
+  } else if (kind === "input") {
+    // Singleton input node: only outputs
+    inputs = [];
+    outputs = [makePort("prompt", "string")];
+  } else if (kind === "output") {
+    // Final sink: only inputs (start empty, add via drag)
+    inputs = [makePort("output", requiredInputType || "string")];
+    outputs = [];
   }
 
   return {
@@ -74,6 +82,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const [flowTitle, setFlowTitle] = useState<string>("Flow");
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Track mouse position to place nodes at cursor when palette is used normally
+  const [lastMousePos, setLastMousePos] = useState<{ x: number; y: number } | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<TypedNodeData>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -116,6 +126,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       setNodes((currentNodes) => {
         return currentNodes.map(node => {
           if (node.id === targetNodeId) {
+            // Do not allow adding inputs to the global input node
+            if (node.data.kind === 'input') return node;
             const newPort: Port = {
               id: genId("p"),
               name: `input-${(node.data.inputs?.length ?? 0) + 1}`,
@@ -171,6 +183,15 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     window.addEventListener('add-input-port', handleAddInputPort);
     return () => window.removeEventListener('add-input-port', handleAddInputPort);
   }, [setNodes, setEdges]);
+
+  // Track global mouse position for placing nodes from the palette
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    }
+    window.addEventListener('mousemove', onMouseMove);
+    return () => window.removeEventListener('mousemove', onMouseMove);
+  }, []);
 
 
 
@@ -314,6 +335,9 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
   function addPort(direction: "inputs" | "outputs") {
     if (!selectedNode) return;
+    // Respect node kind constraints
+    if (selectedNode.data.kind === 'input' && direction === 'inputs') return;
+    if (selectedNode.data.kind === 'output' && direction === 'outputs') return;
     const newPort: Port = {
       id: genId("p"),
       name: `${direction === "inputs" ? "in" : "out"}-${(selectedNode.data[direction]?.length ?? 0) + 1}`,
@@ -326,9 +350,21 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
   // Palette and quick add
   function addNodeAtCenter(kind: NodeKind) {
-    const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 - 24 /* under topbar */ };
-    const pos = rfInstance?.screenToFlowPosition(center) ?? { x: center.x, y: center.y };
-    const node = makeNode(kind, pos);
+    const labelForKind = (k: NodeKind) =>
+      k === 'chainofthought' ? 'Chain Of Thought' : k === 'predict' ? 'Predict' : k === 'input' ? 'Input' : 'Output';
+    // Prefer placing at cursor if available, otherwise center
+    let pos = undefined as { x: number; y: number } | undefined;
+    if (lastMousePos && rfInstance) {
+      pos = rfInstance.screenToFlowPosition({ x: lastMousePos.x, y: lastMousePos.y });
+    }
+    if (!pos) {
+      const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 - 24 /* under topbar */ };
+      pos = rfInstance?.screenToFlowPosition(center) ?? { x: center.x, y: center.y };
+    }
+    if (kind === 'input' && nodes.some(n => n.data.kind === 'input')) {
+      return;
+    }
+    const node = makeNode(kind, pos, labelForKind(kind));
     setNodes((ns) => ns.concat(node));
   }
 
@@ -338,12 +374,17 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     handleType: 'source' | 'target';
     portType: PortType;
   }) {
+    if (kind === 'input' && nodes.some(n => n.data.kind === 'input')) {
+      return;
+    }
     // Calculate offset position so the handle aligns with the drop point
     const offsetPosition = calculateOffsetPosition(position, connection, kind);
     
     // Create node with appropriate input type if connecting from a source
     const requiredType = connection.handleType === 'source' ? connection.portType : undefined;
-    const node = makeNode(kind, offsetPosition, undefined, requiredType);
+    const labelForKind = (k: NodeKind) =>
+      k === 'chainofthought' ? 'Chain Of Thought' : k === 'predict' ? 'Predict' : k === 'input' ? 'Input' : 'Output';
+    const node = makeNode(kind, offsetPosition, labelForKind(kind), requiredType);
     
     // Add the node first
     setNodes((ns) => ns.concat(node));
@@ -460,6 +501,9 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
   function removePort(direction: "inputs" | "outputs", portId: string) {
     if (!selectedNode) return;
+    // Respect node kind constraints
+    if (selectedNode.data.kind === 'input' && direction === 'inputs') return;
+    if (selectedNode.data.kind === 'output' && direction === 'outputs') return;
     
     // Don't allow removal of reasoning port from chainofthought nodes
     if (selectedNode.data.kind === "chainofthought" && direction === "outputs") {
@@ -541,6 +585,12 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           portType: pendingConnection.portType,
           isFromOutput: pendingConnection.handleType === 'source'
         } : undefined}
+        hiddenKinds={(() => {
+          const hidden: NodeKind[] = [] as NodeKind[];
+          if (nodes.some(n => n.data.kind === 'input')) hidden.push('input');
+          if (nodes.some(n => n.data.kind === 'output')) hidden.push('output');
+          return hidden;
+        })()}
       />
 
       {/* Small FAB to open palette */}

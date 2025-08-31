@@ -33,7 +33,7 @@ export interface CustomSchema {
   updatedAt: Date;
 }
 
-export type NodeKind = "chainofthought" | "predict";
+export type NodeKind = "chainofthought" | "predict" | "input" | "output";
 
 export type TypedNodeData = {
   title: string;
