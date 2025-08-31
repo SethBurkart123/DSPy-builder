@@ -1,8 +1,8 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState, useCallback, useEffect } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
-import { Lock } from "lucide-react";
+import { Lock, Plus } from "lucide-react";
 import { PORT_COLORS, PORT_HEX, type TypedNodeData, type PortType } from "./types";
 
 const HANDLE_SIZE = 14; // px
@@ -56,7 +56,28 @@ function handleStylesFor(type: PortType): { className: string; style: React.CSSP
   }
 }
 
+// Add a type for drag state that can be passed as a prop
+export type DragState = {
+  isDragging: boolean;
+  portType: PortType | null;
+  sourceNodeId: string | null;
+  handleId: string | null;
+} | null;
+
 function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
+  const [isDragHovering, setIsDragHovering] = useState(false);
+  const [dragState, setDragState] = useState<DragState>(null);
+
+  // Listen for drag state changes from the main flow component
+  useEffect(() => {
+    function handleDragStateChange(event: any) {
+      setDragState(event.detail);
+    }
+
+    window.addEventListener('drag-state-change', handleDragStateChange);
+    return () => window.removeEventListener('drag-state-change', handleDragStateChange);
+  }, []);
+
   // Calculate minimum height needed for all ports
   const maxPorts = Math.max(data.inputs?.length || 0, data.outputs?.length || 0);
   const headerHeight = 41; // Header is py-2 (8px top+bottom) + text height (~25px) + border = ~41px
@@ -64,12 +85,43 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
   const contentPaddingTop = 12; // p-3 = 12px padding
   const baseContentPadding = 24; // padding top + bottom
   const minContentHeight = maxPorts * portSpacing;
-  const minTotalHeight = headerHeight + minContentHeight + baseContentPadding;
+  const dropZoneHeight = 28; // Height for the drop zone
+  const showDropZone = dragState?.isDragging && isDragHovering && dragState.portType && dragState.sourceNodeId !== id;
+  const minTotalHeight = headerHeight + minContentHeight + baseContentPadding + (showDropZone ? dropZoneHeight : 0);
+
+  const handleMouseEnter = useCallback(() => {
+    if (dragState?.isDragging && dragState.portType && dragState.sourceNodeId !== id) {
+      setIsDragHovering(true);
+    }
+  }, [dragState, id]);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsDragHovering(false);
+  }, []);
+
+  const handleDropZoneClick = useCallback(() => {
+    if (dragState?.isDragging && dragState.portType && dragState.sourceNodeId && dragState.handleId) {
+      // Trigger the add input port functionality
+      const eventDetail = {
+        targetNodeId: id,
+        portType: dragState.portType,
+        sourceNodeId: dragState.sourceNodeId,
+        sourceHandleId: dragState.handleId
+      };
+      
+      const event = new CustomEvent('add-input-port', {
+        detail: eventDetail
+      });
+      window.dispatchEvent(event);
+    }
+  }, [id, dragState]);
 
   return (
     <div 
       className={`w-[240px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "ring-2 ring-primary" : ""} relative flex flex-col`}
       style={{ minHeight: `${minTotalHeight}px` }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Input handles positioned at left edge */}
       {data.inputs?.map((p, index) => {
@@ -168,6 +220,25 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
             ))}
           </div>
         </div>
+        {showDropZone && dragState?.portType && (
+          <div 
+            className="flex text-xs w-full relative"
+            onMouseUp={handleDropZoneClick}
+          >
+            <Handle
+              type="target"
+              position={Position.Left}
+              className={`border !border-border absolute -ml-3 mt-1.5`}
+              style={{
+                ...handleStylesFor(dragState.portType).style,
+                left: -HANDLE_SIZE / 2,
+                top: 0,
+              }}  
+            />
+            <span className="italic opacity-80">{dragState.portType.charAt(0).toUpperCase() + dragState.portType.slice(1)}</span>
+          </div>
+        )}
+
       </div>
     </div>
   );

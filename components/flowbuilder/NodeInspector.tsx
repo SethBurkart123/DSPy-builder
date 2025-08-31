@@ -230,7 +230,7 @@ export default function NodeInspector({
                   className="text-xs"
                   value={p.description || ""}
                   onChange={(e) => updatePort("inputs", idx, { description: e.target.value })}
-                  placeholder="Port description (optional)"
+                  placeholder="Description (optional)"
                   rows={2}
                 />
               </div>
@@ -277,7 +277,7 @@ export default function NodeInspector({
                     className="text-xs"
                     value={p.description || ""}
                     onChange={(e) => updatePort("outputs", actualIdx, { description: e.target.value })}
-                    placeholder="Port description (optional)"
+                    placeholder="Description (optional)"
                     rows={2}
                   />
                 </div>

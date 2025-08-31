@@ -19,7 +19,7 @@ import "reactflow/dist/style.css";
 
 import Topbar from "@/components/flowbuilder/Topbar";
 import NodeInspector from "@/components/flowbuilder/NodeInspector";
-import { TypedNode } from "@/components/flowbuilder/TypedNode";
+import { TypedNode, type DragState } from "@/components/flowbuilder/TypedNode";
 import { CustomConnectionLine } from "@/components/flowbuilder/CustomConnectionLine";
 import type { TypedNodeData, Port, NodeKind, PortType } from "@/components/flowbuilder/types";
 import { PORT_HEX } from "@/components/flowbuilder/types";
@@ -87,6 +87,9 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     position: { x: number; y: number };
   } | null>(null);
 
+  // State for drag-to-add-input functionality
+  const [dragState, setDragState] = useState<DragState>(null);
+
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
 
   // Fetch flow name for topbar and initialize demo schemas
@@ -103,6 +106,71 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       active = false;
     };
   }, [id]);
+
+  // Listen for add-input-port events from nodes
+  useEffect(() => {
+    function handleAddInputPort(event: any) {
+      const { targetNodeId, portType, sourceNodeId, sourceHandleId } = event.detail;
+      
+      // Find the target node and add a new input port
+      setNodes((currentNodes) => {
+        return currentNodes.map(node => {
+          if (node.id === targetNodeId) {
+            const newPort: Port = {
+              id: genId("p"),
+              name: `input-${(node.data.inputs?.length ?? 0) + 1}`,
+              type: portType,
+              description: "",
+            };
+            
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                inputs: [...(node.data.inputs || []), newPort]
+              }
+            };
+          }
+          return node;
+        });
+      });
+      
+      // Create the connection after adding the port
+      setTimeout(() => {
+        setNodes((currentNodes) => {
+          const targetNode = currentNodes.find(n => n.id === targetNodeId);
+          if (targetNode) {
+            const newInputPort = targetNode.data.inputs?.[targetNode.data.inputs.length - 1];
+            if (newInputPort) {
+              const newConnection = {
+                source: sourceNodeId,
+                sourceHandle: sourceHandleId,
+                target: targetNodeId,
+                targetHandle: `in-${newInputPort.id}`,
+              };
+              
+              const edgeColor = PORT_HEX[portType as PortType] || "#64748b";
+              setEdges((eds) => addEdge({
+                ...newConnection,
+                style: {
+                  stroke: edgeColor,
+                  strokeWidth: 3,
+                },
+              }, eds));
+            }
+          }
+          return currentNodes;
+        });
+      }, 10);
+      
+      // Clear the drag state
+      setDragState(null);
+      window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
+    }
+    
+    window.addEventListener('add-input-port', handleAddInputPort);
+    return () => window.removeEventListener('add-input-port', handleAddInputPort);
+  }, [setNodes, setEdges]);
 
 
 
@@ -171,11 +239,31 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       portType,
       position: { x: 0, y: 0 },
     });
+
+    // Also set drag state for drag-to-add-input functionality
+    // Only track output port drags (sources) for adding inputs to other nodes
+    if (handleType === 'source') {
+      const newDragState = {
+        isDragging: true,
+        portType,
+        sourceNodeId: nodeId,
+        handleId,
+      };
+      setDragState(newDragState);
+      
+      // Dispatch event to notify all nodes
+      window.dispatchEvent(new CustomEvent('drag-state-change', {
+        detail: newDragState
+      }));
+    }
   }, [nodes]);
 
   const onConnectEnd: OnConnectEnd = useCallback((event) => {
     if (!event || !event.target || !pendingConnection) {
       setPendingConnection(null);
+      // Only clear drag state if there's no pending connection
+      setDragState(null);
+      window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
       return;
     }
     
@@ -194,9 +282,12 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       // Update the pending connection with the drop position
       setPendingConnection(prev => prev ? { ...prev, position } : null);
       setPaletteOpen(true);
+      // Don't clear drag state here - keep it for potential drop zone clicks
     } else {
-      // Connection was dropped on a valid target or cancelled
+      // Connection was dropped on a valid target - clear everything
       setPendingConnection(null);
+      setDragState(null);
+      window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
     }
   }, [rfInstance, pendingConnection]);
 
@@ -432,6 +523,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         onClose={() => {
           setPaletteOpen(false);
           setPendingConnection(null);
+          setDragState(null);
+          window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
         }} 
         onChoose={(k) => {
           if (pendingConnection) {
@@ -440,6 +533,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           } else {
             addNodeAtCenter(k);
           }
+          setDragState(null);
+          window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
           setPaletteOpen(false);
         }}
         connectionContext={pendingConnection ? {
