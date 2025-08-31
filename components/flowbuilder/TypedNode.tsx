@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
+import { Lock } from "lucide-react";
 import { PORT_COLORS, PORT_HEX, type TypedNodeData, type PortType } from "./types";
 
 const HANDLE_SIZE = 14; // px
@@ -67,7 +68,7 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
 
   return (
     <div 
-      className={`min-w-[220px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "ring-2 ring-primary" : ""} relative flex flex-col`}
+      className={`w-[240px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "ring-2 ring-primary" : ""} relative flex flex-col`}
       style={{ minHeight: `${minTotalHeight}px` }}
     >
       {/* Input handles positioned at left edge */}
@@ -111,11 +112,11 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
       })}
 
       <div className="flex items-center justify-between rounded-t-lg border-b bg-muted/50 px-3 py-2 pb-[14px]">
-        <div className="text-xs font-semibold">{data.title}</div>
+        <div className="text-xs font-semibold truncate">{data.title}</div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 p-3 flex-1">
-        <div className="flex flex-col justify-start">
+        <div className="flex flex-col justify-start min-w-0">
           <div>
             {data.inputs?.map((p, index) => (
               <div 
@@ -123,17 +124,25 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
                 className="flex items-center gap-2"
                 style={{ height: `${portSpacing}px` }}
               >
-                <div className="truncate text-xs">
-                  {p.name}
-                  {p.type === "object" && p.customSchema && (
-                    <span className="text-gray-500 ml-1">({p.customSchema.name})</span>
+                <div className="text-xs min-w-0 flex-1">
+                  <div className={`truncate flex items-center gap-1 ${p.locked ? 'text-amber-700 font-medium' : ''}`}>
+                    {p.locked && <Lock className="h-3 w-3 text-amber-600" />}
+                    {p.name}
+                    {p.type === "object" && p.customSchema && (
+                      <span className="text-gray-500 ml-1">({p.customSchema.name})</span>
+                    )}
+                  </div>
+                  {p.description && (
+                    <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">
+                      {p.description}
+                    </div>
                   )}
                 </div>
               </div>
             ))}
           </div>
         </div>
-        <div className="text-right flex flex-col justify-start">
+        <div className="text-right flex flex-col justify-start min-w-0">
           <div>
             {data.outputs?.map((p, index) => (
               <div 
@@ -141,10 +150,18 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
                 className="flex items-center justify-end gap-2"
                 style={{ height: `${portSpacing}px` }}
               >
-                <div className="truncate text-xs">
-                  {p.name}
-                  {p.type === "object" && p.customSchema && (
-                    <span className="text-gray-500 ml-1">({p.customSchema.name})</span>
+                <div className="text-xs text-right min-w-0 flex-1">
+                  <div className={`truncate flex items-center justify-end gap-1 ${p.locked ? 'opacity-90 font-medium' : ''}`}>
+                    {p.name}
+                    {p.type === "object" && p.customSchema && (
+                      <span className="text-gray-500 ml-1">({p.customSchema.name})</span>
+                    )}
+                    {p.locked && <Lock className="h-3 w-3" />}
+                  </div>
+                  {p.description && (
+                    <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">
+                      {p.description}
+                    </div>
                   )}
                 </div>
               </div>

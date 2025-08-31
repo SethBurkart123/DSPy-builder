@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { SchemaCreator } from "@/components/schema/SchemaCreator";
 import { SchemaBrowser } from "@/components/schema/SchemaBrowser";
 import { SchemaSelector } from "@/components/schema/SchemaSelector";
@@ -207,7 +208,7 @@ export default function NodeInspector({
           </div>
           <div className="space-y-3">
             {data?.inputs?.map((p, idx) => (
-              <div key={p.id}>
+              <div key={p.id} className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Input
                     className="flex-1"
@@ -225,6 +226,13 @@ export default function NodeInspector({
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
+                <Textarea
+                  className="text-xs"
+                  value={p.description || ""}
+                  onChange={(e) => updatePort("inputs", idx, { description: e.target.value })}
+                  placeholder="Port description (optional)"
+                  rows={2}
+                />
               </div>
             ))}
           </div>
@@ -243,27 +251,38 @@ export default function NodeInspector({
             <h4 className="text-xs font-medium uppercase text-muted-foreground">Outputs</h4>
           </div>
           <div className="space-y-3">
-            {data?.outputs?.map((p, idx) => (
-              <div key={p.id}>
-                <div className="flex items-center gap-2">
-                  <Input
-                    className="flex-1"
-                    value={p.name}
-                    onChange={(e) => updatePort("outputs", idx, { name: e.target.value })}
-                    placeholder="Port name"
+            {data?.outputs?.filter(p => !(data.kind === "chainofthought" && p.name === "reasoning")).map((p, idx) => {
+              // Get the actual index in the original outputs array for updates
+              const actualIdx = data?.outputs?.findIndex(port => port.id === p.id) ?? idx;
+              return (
+                <div key={p.id} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      className="flex-1"
+                      value={p.name}
+                      onChange={(e) => updatePort("outputs", actualIdx, { name: e.target.value })}
+                      placeholder="Port name"
+                    />
+                    {renderPortTypeDropdown(p, "outputs", actualIdx)}
+                    <Button 
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => onRemovePort("outputs", p.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <Textarea
+                    className="text-xs"
+                    value={p.description || ""}
+                    onChange={(e) => updatePort("outputs", actualIdx, { description: e.target.value })}
+                    placeholder="Port description (optional)"
+                    rows={2}
                   />
-                  {renderPortTypeDropdown(p, "outputs", idx)}
-                  <Button 
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => onRemovePort("outputs", p.id)}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <Button 
             variant="outline"

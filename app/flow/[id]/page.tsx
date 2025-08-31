@@ -33,18 +33,22 @@ function genId(prefix = "id"): string {
 const nodeTypes = { typed: TypedNode } as const;
 
 function makePort(name: string, type: PortType): Port {
-  return { id: genId("p"), name, type };
+  return { id: genId("p"), name, type, description: "" };
 }
 
 function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: string): Node<TypedNodeData> {
   let inputs: Port[] = [];
   let outputs: Port[] = [];
+  
   if (kind === "chainofthought") {
     inputs = [makePort("prompt", "string")];
-    outputs = [makePort("thought", "string")];
-  } else if (kind === "classify") {
-    inputs = [makePort("text", "string")];
-    outputs = [makePort("label", "string")];
+    outputs = [
+      { ...makePort("reasoning", "string"), locked: true },
+      makePort("output", "string")
+    ];
+  } else if (kind === "predict") {
+    inputs = [makePort("prompt", "string")];
+    outputs = [makePort("output", "string")];
   }
 
   return {
@@ -61,7 +65,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const initialNodes = useMemo<Node<TypedNodeData>[]>(
     () => [
       makeNode("chainofthought", { x: 200, y: 200 }, "Chain Of Thought"),
-      makeNode("classify", { x: 600, y: 220 }, "Classify"),
+      makeNode("predict", { x: 600, y: 220 }, "Predict"),
     ],
     []
   );
@@ -144,6 +148,18 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
   function updateSelectedNode(data: TypedNodeData) {
     if (!selectedNodeId) return;
+    
+    // Ensure reasoning port is always present on chainofthought nodes
+    if (data.kind === "chainofthought") {
+      const hasReasoning = data.outputs.some(p => p.name === "reasoning");
+      if (!hasReasoning) {
+        data = {
+          ...data,
+          outputs: [{ ...makePort("reasoning", "string"), locked: true }, ...data.outputs]
+        };
+      }
+    }
+    
     setNodes((ns) => ns.map((n) => (n.id === selectedNodeId ? { ...n, data } : n)));
   }
 
@@ -153,6 +169,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       id: genId("p"),
       name: `${direction === "inputs" ? "in" : "out"}-${(selectedNode.data[direction]?.length ?? 0) + 1}`,
       type: "string",
+      description: "",
     };
     const next = { ...selectedNode.data, [direction]: [...(selectedNode.data[direction] || []), newPort] } as TypedNodeData;
     updateSelectedNode(next);
@@ -181,6 +198,15 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
   function removePort(direction: "inputs" | "outputs", portId: string) {
     if (!selectedNode) return;
+    
+    // Don't allow removal of reasoning port from chainofthought nodes
+    if (selectedNode.data.kind === "chainofthought" && direction === "outputs") {
+      const portToRemove = selectedNode.data[direction]?.find(p => p.id === portId);
+      if (portToRemove?.name === "reasoning") {
+        return; // Silently prevent removal
+      }
+    }
+    
     const next = { ...selectedNode.data, [direction]: (selectedNode.data[direction] || []).filter((p) => p.id !== portId) } as TypedNodeData;
     updateSelectedNode(next);
   }

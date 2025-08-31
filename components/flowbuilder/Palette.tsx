@@ -4,9 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { NodeKind } from "./types";
 
 const OPTIONS: { key: NodeKind; label: string; description?: string }[] = [
-  { key: "chainofthought", label: "Chain Of Thought", description: "Reason through steps" },
-  { key: "classify", label: "Classify", description: "Label text" },
-  { key: "custom", label: "Custom", description: "Start from scratch" },
+  { key: "chainofthought", label: "Chain Of Thought", description: "Reason through steps with reasoning output" },
+  { key: "predict", label: "Predict", description: "Make predictions without reasoning" },
 ];
 
 export default function Palette({

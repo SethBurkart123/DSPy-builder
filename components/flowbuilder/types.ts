@@ -9,6 +9,7 @@ export type Port = {
   arrayItemType?: PortType;
   arrayItemSchema?: CustomSchema;
   description?: string;
+  locked?: boolean;
 };
 
 // Schema definition interfaces
@@ -32,7 +33,7 @@ export interface CustomSchema {
   updatedAt: Date;
 }
 
-export type NodeKind = "chainofthought" | "classify" | "custom";
+export type NodeKind = "chainofthought" | "predict";
 
 export type TypedNodeData = {
   title: string;
