@@ -27,5 +27,30 @@ def init_db() -> None:
             )
             """
         )
+        # Store the latest saved graph/state per flow as a JSON blob
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS flow_states (
+                flow_id TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(flow_id) REFERENCES flows(id) ON DELETE CASCADE
+            )
+            """
+        )
+        # Per-flow custom schemas, stored as JSON for flexibility
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS flow_schemas (
+                id TEXT PRIMARY KEY,
+                flow_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                fields TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(flow_id) REFERENCES flows(id) ON DELETE CASCADE
+            )
+            """
+        )
         conn.commit()
-

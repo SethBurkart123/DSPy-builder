@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Package, Edit, Trash2, Code, Search, Plus } from "lucide-react";
 import { CustomSchema } from "@/components/flowbuilder/types";
-import { schemaManager } from "@/lib/schema-manager";
+import { useFlowSchemas } from "@/lib/useFlowSchemas";
 import { typeIcon, typeLabel } from "@/components/flowbuilder/typeDisplay";
 import {
   Dialog,
@@ -22,6 +22,7 @@ interface SchemaBrowserProps {
   onEdit: (schema: CustomSchema) => void;
   onSelect?: (schema: CustomSchema) => void;
   mode?: "browse" | "select";
+  flowId: string;
 }
 
 export function SchemaBrowser({ 
@@ -30,26 +31,23 @@ export function SchemaBrowser({
   onCreateNew, 
   onEdit, 
   onSelect,
-  mode = "browse" 
+  mode = "browse",
+  flowId,
 }: SchemaBrowserProps) {
-  const [schemas, setSchemas] = useState<CustomSchema[]>([]);
+  const { schemas, deleteSchema, exportToDSPy, getSchema, refresh } = useFlowSchemas(flowId);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSchema, setSelectedSchema] = useState<CustomSchema | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      loadSchemas();
+      refresh();
     }
-  }, [isOpen]);
-
-  const loadSchemas = () => {
-    setSchemas(schemaManager.getAllSchemas());
-  };
+  }, [isOpen, refresh]);
 
   const handleDelete = async (schema: CustomSchema) => {
     if (confirm(`Are you sure you want to delete the schema "${schema.name}"?`)) {
-      schemaManager.deleteSchema(schema.id);
-      loadSchemas();
+      await deleteSchema(schema.id);
+      await refresh();
       if (selectedSchema?.id === schema.id) {
         setSelectedSchema(null);
       }
@@ -57,7 +55,7 @@ export function SchemaBrowser({
   };
 
   const handleCopyCode = (schema: CustomSchema) => {
-    const code = schemaManager.exportToDSPy(schema);
+    const code = exportToDSPy(schema);
     navigator.clipboard.writeText(code);
     // Could add a toast notification here
   };
@@ -90,10 +88,10 @@ export function SchemaBrowser({
               <div className="mt-1 text-muted-foreground">{f.description}</div>
             )}
             {f.type === 'object' && (f as any).objectSchemaId && (
-              <div className="mt-2">{schemaManager.getSchema((f as any).objectSchemaId) && renderNestedSchema(schemaManager.getSchema((f as any).objectSchemaId)!, level + 1, maxLevels)}</div>
+              <div className="mt-2">{getSchema((f as any).objectSchemaId) && renderNestedSchema(getSchema((f as any).objectSchemaId)!, level + 1, maxLevels)}</div>
             )}
             {f.type === 'array' && (f as any).arrayItemSchemaId && (
-              <div className="mt-2">{schemaManager.getSchema((f as any).arrayItemSchemaId) && renderNestedSchema(schemaManager.getSchema((f as any).arrayItemSchemaId)!, level + 1, maxLevels)}</div>
+              <div className="mt-2">{getSchema((f as any).arrayItemSchemaId) && renderNestedSchema(getSchema((f as any).arrayItemSchemaId)!, level + 1, maxLevels)}</div>
             )}
           </div>
         ))}
@@ -253,10 +251,10 @@ export function SchemaBrowser({
                             <p className="text-sm text-muted-foreground">{field.description}</p>
                           )}
                           {field.type === 'object' && field.objectSchemaId && (
-                            <div>{schemaManager.getSchema(field.objectSchemaId) && renderNestedSchema(schemaManager.getSchema(field.objectSchemaId)!)}</div>
+                            <div>{getSchema(field.objectSchemaId) && renderNestedSchema(getSchema(field.objectSchemaId)!)}</div>
                           )}
                           {field.type === 'array' && field.arrayItemSchemaId && (
-                            <div>{schemaManager.getSchema(field.arrayItemSchemaId) && renderNestedSchema(schemaManager.getSchema(field.arrayItemSchemaId)!)}</div>
+                            <div>{getSchema(field.arrayItemSchemaId) && renderNestedSchema(getSchema(field.arrayItemSchemaId)!)}</div>
                           )}
                         </div>
                       </div>
@@ -269,7 +267,7 @@ export function SchemaBrowser({
                   <h4 className="text-lg font-medium mb-3">DSPy Code</h4>
                   <div className="rounded border bg-muted/40 p-4">
                     <pre className="text-sm whitespace-pre-wrap font-mono text-foreground">
-                      {schemaManager.exportToDSPy(selectedSchema)}
+                      {exportToDSPy(selectedSchema)}
                     </pre>
                   </div>
                 </div>

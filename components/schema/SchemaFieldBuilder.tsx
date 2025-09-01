@@ -5,7 +5,8 @@ import {
   Trash2,
   Package,
   GripVertical,
-  Plus
+  Plus,
+  Type
 } from "lucide-react";
 import { Edit } from "lucide-react";
 import {
@@ -20,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { SchemaField, PortType, CustomSchema } from "@/components/flowbuilder/types";
-import { schemaManager } from "@/lib/schema-manager";
+import { useFlowSchemas } from "@/lib/useFlowSchemas";
 import { filterPythonIdentifier, getPythonIdentifierError } from "@/lib/python-identifier-utils";
 import { SchemaSelector } from "./SchemaSelector";
 import { typeIcon, typeLabel } from "@/components/flowbuilder/typeDisplay";
@@ -42,6 +43,7 @@ interface SchemaFieldBuilderProps {
   onCreateNestedSchema?: () => void;
   onEditNestedSchema?: (schema: CustomSchema) => void;
   rootSchemaId?: string;
+  flowId: string;
 }
 
 export function SchemaFieldBuilder({
@@ -55,8 +57,10 @@ export function SchemaFieldBuilder({
   depth = 0,
   onCreateNestedSchema,
   onEditNestedSchema,
-  rootSchemaId
+  rootSchemaId,
+  flowId,
 }: SchemaFieldBuilderProps) {
+  const { getSchema, wouldIntroduceCycle } = useFlowSchemas(flowId);
   const [schemaSelectorOpen, setSchemaSelectorOpen] = useState(false);
   const [selectorContext, setSelectorContext] = useState<'object' | 'arrayItem' | null>(null);
 
@@ -66,7 +70,7 @@ export function SchemaFieldBuilder({
 
   const handleSchemaSelect = (schema: CustomSchema) => {
     // Prevent circular references when editing an existing schema
-    if (rootSchemaId && schemaManager.wouldIntroduceCycle(rootSchemaId, schema.id)) {
+    if (rootSchemaId && wouldIntroduceCycle(rootSchemaId, schema.id)) {
       // Silently ignore; could add a toast in the future
       return;
     }
@@ -112,10 +116,10 @@ export function SchemaFieldBuilder({
               {!sub.required && <span className="text-muted-foreground">optional</span>}
             </div>
             {sub.type === 'object' && sub.objectSchemaId && (
-              <div>{renderNestedFields(schemaManager.getSchema(sub.objectSchemaId), level + 1, maxLevels)}</div>
+              <div>{renderNestedFields(getSchema(sub.objectSchemaId), level + 1, maxLevels)}</div>
             )}
             {sub.type === 'array' && sub.arrayItemSchemaId && (
-              <div>{renderNestedFields(schemaManager.getSchema(sub.arrayItemSchemaId), level + 1, maxLevels)}</div>
+              <div>{renderNestedFields(getSchema(sub.arrayItemSchemaId), level + 1, maxLevels)}</div>
             )}
           </div>
         ))}
@@ -157,7 +161,7 @@ export function SchemaFieldBuilder({
             <Label className="text-xs text-muted-foreground">Object schema:</Label>
             <Button variant="outline" size="sm" onClick={() => openSchemaSelector('arrayItem')}>
               <Package className="h-3 w-3 mr-1" />
-              {field.arrayItemSchemaId ? (schemaManager.getSchema(field.arrayItemSchemaId)?.name || 'Unknown') : "Select schema"}
+              {field.arrayItemSchemaId ? (getSchema(field.arrayItemSchemaId)?.name || 'Unknown') : "Select schema"}
             </Button>
             {onCreateNestedSchema && (
               <Button variant="outline" size="icon" onClick={onCreateNestedSchema} title="Create new schema">
@@ -166,7 +170,7 @@ export function SchemaFieldBuilder({
             )}
           </div>
         )}
-        {field.arrayItemSchemaId && renderNestedFields(schemaManager.getSchema(field.arrayItemSchemaId) || undefined)}
+        {field.arrayItemSchemaId && renderNestedFields(getSchema(field.arrayItemSchemaId) || undefined)}
       </div>
     );
   };
@@ -180,11 +184,11 @@ export function SchemaFieldBuilder({
           <Label className="text-xs text-muted-foreground">Object schema:</Label>
           <Button variant="outline" size="sm" onClick={() => openSchemaSelector('object')}>
             <Package className="h-3 w-3 mr-1" />
-            {field.objectSchemaId ? (schemaManager.getSchema(field.objectSchemaId)?.name || 'Unknown') : "Select schema"}
+            {field.objectSchemaId ? (getSchema(field.objectSchemaId)?.name || 'Unknown') : "Select schema"}
           </Button>
           {field.objectSchemaId && onEditNestedSchema && (
             <Button variant="ghost" size="icon" onClick={() => {
-              const s = schemaManager.getSchema(field.objectSchemaId!);
+              const s = getSchema(field.objectSchemaId!);
               if (s) onEditNestedSchema(s);
             }} title="Edit schema">
               <Edit className="h-3 w-3" />
@@ -194,7 +198,7 @@ export function SchemaFieldBuilder({
 
         {field.objectSchemaId && (
           <div className="mt-2">
-            {renderNestedFields(schemaManager.getSchema(field.objectSchemaId) || undefined)}
+            {renderNestedFields(getSchema(field.objectSchemaId) || undefined)}
           </div>
         )}
       </div>
@@ -302,6 +306,7 @@ export function SchemaFieldBuilder({
         title={selectorContext === 'arrayItem' ? "Select Array Item Schema" : "Select Object Schema"}
         description={selectorContext === 'arrayItem' ? "Choose a schema for array items" : "Choose a schema for this object field"}
         onCreateNew={onCreateNestedSchema}
+        flowId={flowId}
       />
     </div>
   );

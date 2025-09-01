@@ -173,7 +173,7 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
             {data.inputs?.map((p, index) => (
               <div 
                 key={p.id} 
-                className="flex items-center gap-2"
+                className="flex items-center"
                 style={{ height: `${portSpacing}px` }}
               >
                 <div className="text-xs min-w-0 flex-1">
@@ -192,6 +192,27 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
                 </div>
               </div>
             ))}
+
+            {showDropZone && dragState?.portType && (
+              <div 
+                className="flex items-center text-[10px] w-full relative"
+                style={{ height: `${portSpacing}px` }}
+                onMouseUp={handleDropZoneClick}
+              >
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  className={`border !border-border absolute -ml-3`}
+                  style={{
+                    ...handleStylesFor(dragState.portType).style,
+                    left: -HANDLE_SIZE / 2,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                  }}
+                />
+                <span className="italic opacity-80">{dragState.portType.charAt(0).toUpperCase() + dragState.portType.slice(1)}</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="text-right flex flex-col justify-start min-w-0">
@@ -220,25 +241,6 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
             ))}
           </div>
         </div>
-        {showDropZone && dragState?.portType && (
-          <div 
-            className="flex text-xs w-full relative"
-            onMouseUp={handleDropZoneClick}
-          >
-            <Handle
-              type="target"
-              position={Position.Left}
-              className={`border !border-border absolute -ml-3 mt-1.5`}
-              style={{
-                ...handleStylesFor(dragState.portType).style,
-                left: -HANDLE_SIZE / 2,
-                top: 0,
-              }}  
-            />
-            <span className="italic opacity-80">{dragState.portType.charAt(0).toUpperCase() + dragState.portType.slice(1)}</span>
-          </div>
-        )}
-
       </div>
     </div>
   );

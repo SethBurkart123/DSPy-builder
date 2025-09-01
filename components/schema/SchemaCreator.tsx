@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Plus, Save, Code, FileText, AlertCircle } from "lucide-react";
 import { CustomSchema, SchemaField } from "@/components/flowbuilder/types";
-import { schemaManager } from "@/lib/schema-manager";
+import { useFlowSchemas } from "@/lib/useFlowSchemas";
 import { SchemaFieldBuilder } from "./SchemaFieldBuilder";
 import {
   Dialog,
@@ -27,6 +27,7 @@ interface SchemaCreatorProps {
   isNested?: boolean;
   title?: string;
   depth?: number;
+  flowId: string;
 }
 
 export function SchemaCreator({ 
@@ -36,8 +37,10 @@ export function SchemaCreator({
   initialSchema, 
   isNested = false, 
   title,
-  depth = 0
+  depth = 0,
+  flowId,
 }: SchemaCreatorProps) {
+  const { schemas, createSchema, updateSchema, createField, validateSchema, exportToDSPy, refresh } = useFlowSchemas(flowId);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [fields, setFields] = useState<SchemaField[]>([]);
@@ -53,7 +56,7 @@ export function SchemaCreator({
   useEffect(() => {
     if (isOpen) {
       // Load available schemas for object/array references
-      setAvailableSchemas(schemaManager.getAllSchemas());
+      setAvailableSchemas(schemas);
       
       if (initialSchema) {
         setName(initialSchema.name);
@@ -63,16 +66,16 @@ export function SchemaCreator({
         // Start with one empty field
         setName("");
         setDescription("");
-        setFields([schemaManager.createField()]);
+        setFields([createField()]);
       }
       setErrors([]);
       setShowPreview(false);
     }
-  }, [isOpen, initialSchema]);
+  }, [isOpen, initialSchema, schemas, createField]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const schemaData = { name, description, fields };
-    const validationErrors = schemaManager.validateSchema(schemaData);
+    const validationErrors = validateSchema(schemaData);
     
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
@@ -81,9 +84,9 @@ export function SchemaCreator({
 
     let savedSchema: CustomSchema;
     if (initialSchema) {
-      savedSchema = schemaManager.updateSchema(initialSchema.id, schemaData)!;
+      savedSchema = await updateSchema(initialSchema.id, schemaData);
     } else {
-      savedSchema = schemaManager.saveSchema(schemaData);
+      savedSchema = await createSchema(schemaData);
     }
     
     onSave(savedSchema);
@@ -91,7 +94,7 @@ export function SchemaCreator({
   };
 
   const addField = () => {
-    setFields([...fields, schemaManager.createField()]);
+    setFields([...fields, createField()]);
   };
 
   const updateField = (index: number, updatedField: SchemaField) => {
@@ -138,14 +141,14 @@ export function SchemaCreator({
     setNestedSchemaOpen(false);
     setEditingFieldForNested(null);
     setNestedEditingSchema(null);
-    setAvailableSchemas(schemaManager.getAllSchemas());
+    refresh().then(() => setAvailableSchemas(schemas));
   };
 
   const generateDSPyCode = () => {
     if (!name || fields.length === 0) return "";
     
     try {
-      return schemaManager.exportToDSPy({ name, description, fields, id: "" });
+      return exportToDSPy({ name, description, fields, id: "" });
     } catch {
       return "// Error generating code preview";
     }
@@ -222,6 +225,7 @@ export function SchemaCreator({
                       onCreateNestedSchema={depth < 2 ? () => handleCreateNestedSchema(index) : undefined}
                       onEditNestedSchema={depth < 2 && fields[index].objectSchemaId ? (schema) => handleEditNestedSchema(index, schema) : undefined}
                       rootSchemaId={initialSchema?.id}
+                      flowId={flowId}
                     />
                   ))}
                 </div>
@@ -348,6 +352,7 @@ export function SchemaCreator({
           title={`${nestedEditingSchema ? 'Edit' : 'Create'} Schema for Field: ${editingFieldForNested !== null ? fields[editingFieldForNested]?.name || 'Unnamed' : ''}`}
           depth={depth + 1}
           initialSchema={nestedEditingSchema ?? undefined}
+          flowId={flowId}
         />
       )}
     </>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, use } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -25,7 +25,9 @@ import type { TypedNodeData, Port, NodeKind, PortType } from "@/components/flowb
 import { PORT_HEX } from "@/components/flowbuilder/types";
 import { api } from "@/lib/api";
 import Palette from "@/components/flowbuilder/Palette";
+import { toast } from "react-hot-toast";
 import type { ReactFlowInstance } from "reactflow";
+import { useRouter } from "next/navigation";
 
 function genId(prefix = "id"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
@@ -72,21 +74,61 @@ function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: st
 export default function FlowBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const initialNodes = useMemo<Node<TypedNodeData>[]>(
-    () => [
-      makeNode("chainofthought", { x: 200, y: 200 }, "Chain Of Thought"),
-      makeNode("predict", { x: 600, y: 220 }, "Predict"),
-    ],
+    () => [],
     []
   );
   
   const [flowTitle, setFlowTitle] = useState<string>("Flow");
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
+  const [loadedFromServer, setLoadedFromServer] = useState<boolean>(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Track mouse position to place nodes at cursor when palette is used normally
   const [lastMousePos, setLastMousePos] = useState<{ x: number; y: number } | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<TypedNodeData>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const router = useRouter();
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number } | null>(null);
+  const [initialViewport, setInitialViewport] = useState<{ x: number; y: number; zoom: number } | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const latestPayloadRef = useRef<any>(null);
+  const retryTimerRef = useRef<number | null>(null);
+  const backoffRef = useRef<number>(1000); // start at 1s, max 30s
+
+  function clearRetry() {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }
+
+  function scheduleRetry() {
+    clearRetry();
+    const delay = backoffRef.current;
+    retryTimerRef.current = window.setTimeout(() => {
+      if (latestPayloadRef.current) {
+        attemptSave(latestPayloadRef.current, true);
+      }
+    }, delay) as unknown as number;
+    backoffRef.current = Math.min(backoffRef.current * 2, 30000);
+  }
+
+  async function attemptSave(payload: any, isRetry = false) {
+    setSaveStatus('saving');
+    try {
+      await api.saveFlowState(id, payload);
+      setSaveStatus('saved');
+      backoffRef.current = 1000;
+      clearRetry();
+    } catch (e) {
+      setSaveStatus('error');
+      if (!isRetry) {
+        toast.error('Failed to save flow');
+      }
+      scheduleRetry();
+    }
+  }
   
   // State for tracking drag-to-create functionality
   const [pendingConnection, setPendingConnection] = useState<{
@@ -101,6 +143,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const [dragState, setDragState] = useState<DragState>(null);
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
+  
 
   // Fetch flow name for topbar and initialize demo schemas
   useEffect(() => {
@@ -116,6 +159,35 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       active = false;
     };
   }, [id]);
+
+  // Load saved graph state (nodes/edges/viewport)
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const state = await api.getFlowState(id);
+        if (cancelled) return;
+        const sNodes = (state.data?.nodes ?? []) as Node<TypedNodeData>[];
+        const sEdges = (state.data?.edges ?? []) as Edge[];
+        const v: any = state.data?.viewport;
+        if (sNodes.length || sEdges.length) {
+          setNodes(sNodes);
+          setEdges(sEdges);
+        }
+        if (v && typeof v.x === 'number' && typeof v.y === 'number' && typeof v.zoom === 'number') {
+          setInitialViewport({ x: v.x, y: v.y, zoom: v.zoom });
+        }
+      } catch (e) {
+        // ignore; use defaults
+      } finally {
+        if (!cancelled) setLoadedFromServer(true);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, setNodes, setEdges]);
 
   // Listen for add-input-port events from nodes
   useEffect(() => {
@@ -312,8 +384,9 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     }
   }, [rfInstance, pendingConnection]);
 
-  const onSelectionChange = useCallback(({ nodes: n }: { nodes: Node[] }) => {
+  const onSelectionChange = useCallback(({ nodes: n, edges: e }: { nodes: Node[], edges: Edge[] }) => {
     setSelectedNodeId(n[0]?.id ?? null);
+    setSelectedEdgeId(e[0]?.id ?? null);
   }, []);
 
   function updateSelectedNode(data: TypedNodeData) {
@@ -536,9 +609,93 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     );
   }, [nodes, setEdges]);
 
+  // Apply outline effect to selected edges
+  useEffect(() => {
+    setEdges((eds) =>
+      eds.map((e) => {
+        const isSelected = e.id === selectedEdgeId;
+        const currentStyle = e.style || {};
+        
+        if (isSelected) {
+          // Add outline effect for selected edge
+          return {
+            ...e,
+            style: {
+              ...currentStyle,
+              filter: 'drop-shadow(0 0 6px rgba(59, 130, 246, 0.8))',
+              strokeWidth: (typeof currentStyle.strokeWidth === 'number' ? currentStyle.strokeWidth : 3) + 1,
+            }
+          } as Edge;
+        } else {
+          // Remove outline effect from non-selected edges
+          const { filter, ...restStyle } = currentStyle;
+          const strokeWidth = typeof currentStyle.strokeWidth === 'number' && currentStyle.strokeWidth > 3 
+            ? currentStyle.strokeWidth - 1 
+            : currentStyle.strokeWidth;
+          
+          return {
+            ...e,
+            style: {
+              ...restStyle,
+              strokeWidth,
+            }
+          } as Edge;
+        }
+      })
+    );
+  }, [selectedEdgeId, setEdges]);
+
+  // Apply initial viewport when instance ready
+  useEffect(() => {
+    if (rfInstance && initialViewport) {
+      try {
+        (rfInstance as any).setViewport?.(initialViewport);
+      } catch {}
+    }
+  }, [rfInstance, initialViewport]);
+
+  // Auto-save graph state when nodes/edges/viewport change (debounced)
+  useEffect(() => {
+    if (!loadedFromServer) return; // avoid saving before initial load
+    const handle = setTimeout(() => {
+      const payload = { nodes, edges, viewport: viewport ?? ((rfInstance as any)?.getViewport?.() || undefined) } as any;
+      latestPayloadRef.current = payload;
+      clearRetry();
+      backoffRef.current = 1000; // reset backoff on new change
+      attemptSave(payload);
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [id, nodes, edges, viewport, rfInstance, loadedFromServer]);
+
+  // Turn saved -> idle after a short delay
+  useEffect(() => {
+    if (saveStatus === 'saved') {
+      const t = setTimeout(() => setSaveStatus('idle'), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [saveStatus]);
+
+  // Prevent accidental refresh/close while saving
+  useEffect(() => {
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      if (saveStatus === 'saving') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [saveStatus]);
+
   return (
     <div className="h-screen w-screen overflow-hidden bg-background">
-      <Topbar title={flowTitle} />
+      <Topbar title={flowTitle} status={saveStatus} onBack={() => {
+        if (saveStatus === 'saving') {
+          const ok = confirm('A save is in progress. Are you sure you want to leave?');
+          if (!ok) return;
+        }
+        router.push('/');
+      }} />
       <div className="absolute inset-0 top-12">
         <ReactFlow
           nodeTypes={nodeTypes}
@@ -552,7 +709,9 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           isValidConnection={isValidConnection}
           onSelectionChange={onSelectionChange}
           onInit={(inst) => setRfInstance(inst)}
+          onMoveEnd={(_, vp) => setViewport(vp)}
           connectionLineComponent={CustomConnectionLine}
+          elementsSelectable={true}
           fitView
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
@@ -561,7 +720,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         </ReactFlow>
       </div>
 
-      <NodeInspector node={selectedNode ?? null} onChange={updateSelectedNode} onAddPort={addPort} onRemovePort={removePort} />
+      <NodeInspector node={selectedNode ?? null} onChange={updateSelectedNode} onAddPort={addPort} onRemovePort={removePort} flowId={id} />
       <Palette 
         open={paletteOpen} 
         onClose={() => {

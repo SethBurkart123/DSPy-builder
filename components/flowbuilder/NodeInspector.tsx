@@ -22,7 +22,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { SchemaCreator } from "@/components/schema/SchemaCreator";
 import { SchemaBrowser } from "@/components/schema/SchemaBrowser";
 import { SchemaSelector } from "@/components/schema/SchemaSelector";
-import { schemaManager } from "@/lib/schema-manager";
 
 const ALL_TYPES: PortType[] = ["string", "string[]", "boolean", "float", "int", "array", "object"];
 
@@ -35,11 +34,13 @@ export default function NodeInspector({
   onChange,
   onAddPort,
   onRemovePort,
+  flowId,
 }: {
   node: Node<TypedNodeData> | null;
   onChange: (data: TypedNodeData) => void;
   onAddPort: (direction: "inputs" | "outputs") => void;
   onRemovePort: (direction: "inputs" | "outputs", portId: string) => void;
+  flowId: string;
 }) {
   const data = node?.data;
   const hasNode = !!node;
@@ -50,12 +51,7 @@ export default function NodeInspector({
   const [schemaBrowserOpen, setSchemaBrowserOpen] = useState(false);
   const [schemaSelectorOpen, setSchemaSelectorOpen] = useState(false);
   const [editingPortIndex, setEditingPortIndex] = useState<{ direction: "inputs" | "outputs", index: number } | null>(null);
-  const [availableSchemas, setAvailableSchemas] = useState<CustomSchema[]>([]);
-
-  // Load available schemas when component mounts
-  useMemo(() => {
-    setAvailableSchemas(schemaManager.getAllSchemas());
-  }, [schemaCreatorOpen, schemaBrowserOpen]);
+  
 
   if (!hasNode) return null;
 
@@ -79,7 +75,6 @@ export default function NodeInspector({
   };
 
   const handleSchemaCreated = (schema: CustomSchema) => {
-    setAvailableSchemas(schemaManager.getAllSchemas());
     // If we were editing a port, apply the new schema
     if (editingPortIndex) {
       updatePort(editingPortIndex.direction, editingPortIndex.index, { 
@@ -141,15 +136,13 @@ export default function NodeInspector({
             <Package className="h-3 w-3" />
             Create Custom Object
           </DropdownMenuItem>
-          {availableSchemas.length > 0 && (
-            <DropdownMenuItem
-              onClick={() => handleSelectExistingSchema(direction, idx)}
-              className="flex items-center gap-2"
-            >
-              <Library className="h-3 w-3" />
-              Select Existing Schema
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem
+            onClick={() => handleSelectExistingSchema(direction, idx)}
+            className="flex items-center gap-2"
+          >
+            <Library className="h-3 w-3" />
+            Select Existing Schema
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -293,6 +286,7 @@ export default function NodeInspector({
         }}
         onSave={handleSchemaCreated}
         initialSchema={editingSchema ?? undefined}
+        flowId={flowId}
       />
 
       {/* Schema Browser Modal */}
@@ -314,6 +308,7 @@ export default function NodeInspector({
         }}
         onSelect={handleSchemaSelected}
         mode={editingPortIndex ? "select" : "browse"}
+        flowId={flowId}
       />
 
       {/* Schema Selector Modal */}
@@ -326,6 +321,7 @@ export default function NodeInspector({
         onSelect={handleSchemaSelected}
         title="Select Schema"
         description="Choose a schema for this port"
+        flowId={flowId}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Package, Search, Plus } from "lucide-react";
 import { CustomSchema } from "@/components/flowbuilder/types";
-import { schemaManager } from "@/lib/schema-manager";
+import { useFlowSchemas } from "@/lib/useFlowSchemas";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,7 @@ interface SchemaSelectorProps {
   title?: string;
   description?: string;
   onCreateNew?: () => void;
+  flowId: string;
 }
 
 export function SchemaSelector({ 
@@ -30,16 +31,17 @@ export function SchemaSelector({
   title = "Select Schema",
   description = "Choose a schema to use",
   onCreateNew,
+  flowId,
 }: SchemaSelectorProps) {
-  const [schemas, setSchemas] = useState<CustomSchema[]>([]);
+  const { schemas, refresh } = useFlowSchemas(flowId);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     if (isOpen) {
-      setSchemas(schemaManager.getAllSchemas());
+      refresh();
       setSearchTerm("");
     }
-  }, [isOpen]);
+  }, [isOpen, refresh]);
 
   const filteredSchemas = schemas.filter(schema =>
     schema.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
