@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { ArrowLeft, RefreshCcw, CheckCircle2, AlertCircle } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useState } from "react";
+import KeysManager from "@/components/KeysManager";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 export default function Topbar({ title, status = "idle", onBack }: { title: string; status?: SaveStatus; onBack?: () => void }) {
+  const [keysOpen, setKeysOpen] = useState(false);
   return (
     <div className="fixed inset-x-0 top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-12 items-center gap-3 px-4">
@@ -33,8 +36,16 @@ export default function Topbar({ title, status = "idle", onBack }: { title: stri
             {status === "error" && <AlertCircle className="h-4 w-4 text-red-600" aria-label="Save failed" />}
           </span>
         )}
+        <button
+          onClick={() => setKeysOpen(true)}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          title="Manage API Keys"
+        >
+          API Keys
+        </button>
         <ThemeToggle />
       </div>
+      <KeysManager open={keysOpen} onClose={() => setKeysOpen(false)} />
     </div>
   );
 }

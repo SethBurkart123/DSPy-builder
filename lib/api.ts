@@ -102,4 +102,29 @@ export const api = {
     }),
   deleteFlowSchema: (flowId: string, schemaId: string) =>
     http<{ ok: boolean }>(`${BASE}/flows/${flowId}/schemas/${schemaId}`, { method: "DELETE" }),
+  // API keys
+  listKeys: () => http<{ provider: string; has_key: boolean; updated_at?: string | null }[]>(`${BASE}/keys/`),
+  upsertKey: (provider: string, api_key: string) =>
+    http<{ provider: string; has_key: boolean; updated_at?: string | null }>(`${BASE}/keys/${provider}`, {
+      method: "PUT",
+      body: JSON.stringify({ api_key }),
+    }),
+  deleteKey: (provider: string) => http<{ ok: boolean }>(`${BASE}/keys/${provider}`, { method: "DELETE" }),
+  runNode: (
+    flowId: string,
+    data: {
+      node_kind: string;
+      node_title?: string;
+      node_description?: string;
+      inputs_schema: { name: string; type: string; description?: string }[];
+      outputs_schema: { name: string; type: string; description?: string }[];
+      inputs_values: Record<string, any>;
+      model?: string;
+      lm_params?: Record<string, any>;
+    }
+  ) =>
+    http<{ outputs?: Record<string, any>; reasoning?: any; error?: string }>(
+      `${BASE}/flows/${flowId}/run/node`,
+      { method: "POST", body: JSON.stringify(data) }
+    ),
 };

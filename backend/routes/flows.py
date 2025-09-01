@@ -11,6 +11,8 @@ from app.schemas import (
     FlowStateIn,
     FlowSchemaIn,
     FlowSchemaOut,
+    NodeRunIn,
+    NodeRunOut,
 )
 from app.utils import now_iso, new_id, slugify
 
@@ -291,3 +293,47 @@ def _unique_slug(base: str, exclude_id: str | None = None) -> str:
                 return slug
             idx += 1
             slug = f"{base}-{idx}"
+
+
+# ---- Execution ----
+
+@router.post("/{flow_id}/run/node", response_model=NodeRunOut)
+def run_node(flow_id: str, payload: NodeRunIn):
+    ensure_db()
+    with get_connection() as conn:
+        cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Flow not found")
+
+    import subprocess
+    import sys
+    import json as _json
+    # Pass current environment (dotenv has already loaded on startup)
+    import os
+    provider_env = dict(os.environ)
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "app.node_runner"],
+            input=_json.dumps(payload.dict()).encode("utf-8"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=__import__('pathlib').Path(__file__).resolve().parents[1],
+            env=provider_env,
+            timeout=120,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Runner failed to start: {e}")
+
+    if proc.returncode != 0:
+        try:
+            data = _json.loads(proc.stdout.decode("utf-8") or "{}")
+            return NodeRunOut(**data)
+        except Exception:
+            raise HTTPException(status_code=500, detail=proc.stderr.decode("utf-8") or "Runner error")
+
+    try:
+        data = _json.loads(proc.stdout.decode("utf-8") or "{}")
+        return NodeRunOut(**data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Invalid runner output: {e}")

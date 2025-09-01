@@ -44,13 +44,20 @@ function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: st
   let outputs: Port[] = [];
   
   if (kind === "chainofthought") {
-    inputs = [makePort("prompt", requiredInputType || "string")];
+    inputs = [
+      // dedicated model input (LLM provider only)
+      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
+      makePort("prompt", requiredInputType || "string"),
+    ];
     outputs = [
       { ...makePort("reasoning", "string"), locked: true },
       makePort("output", "string")
     ];
   } else if (kind === "predict") {
-    inputs = [makePort("prompt", requiredInputType || "string")];
+    inputs = [
+      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
+      makePort("prompt", requiredInputType || "string"),
+    ];
     outputs = [makePort("output", "string")];
   } else if (kind === "input") {
     // Singleton input node: only outputs
@@ -60,13 +67,25 @@ function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: st
     // Final sink: only inputs (start empty, add via drag)
     inputs = [makePort("output", requiredInputType || "string")];
     outputs = [];
+  } else if (kind === "llm") {
+    // LLM provider: emits a provider value consumable by model inputs
+    inputs = [];
+    outputs = [
+      { ...makePort("model", "llm"), description: "LLM provider output", locked: true },
+    ];
   }
 
   return {
     id: genId("n"),
     type: "typed",
     position,
-    data: { title: title ?? kind, kind, inputs, outputs },
+    data: { 
+      title: title ?? (kind === 'chainofthought' ? 'Chain Of Thought' : kind === 'predict' ? 'Predict' : kind === 'llm' ? 'LLM Provider' : kind), 
+      kind, 
+      inputs, 
+      outputs,
+      llm: (kind === 'llm' || kind === 'predict' || kind === 'chainofthought') ? { model: 'gemini/gemini-2.5-flash' } : undefined,
+    },
   };
 }
 
@@ -374,7 +393,16 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       
       // Update the pending connection with the drop position
       setPendingConnection(prev => prev ? { ...prev, position } : null);
-      setPaletteOpen(true);
+      // If dragging from a target 'llm' input, auto-create an LLM provider node
+      if (pendingConnection?.handleType === 'target' && pendingConnection?.portType === 'llm') {
+        addNodeWithConnection('llm', position, pendingConnection);
+        setPendingConnection(null);
+        // Keep drag state cleanup consistent
+        setDragState(null);
+        window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
+      } else {
+        setPaletteOpen(true);
+      }
       // Don't clear drag state here - keep it for potential drop zone clicks
     } else {
       // Connection was dropped on a valid target - clear everything
@@ -383,6 +411,122 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
     }
   }, [rfInstance, pendingConnection]);
+
+  // Keep derived llmConnected flag on nodes in sync with edges
+  useEffect(() => {
+    setNodes((curr) => {
+      let changed = false;
+      const next = curr.map((n) => {
+        if (n.data.kind === 'predict' || n.data.kind === 'chainofthought') {
+          const modelPort = n.data.inputs.find((p) => p.type === 'llm' && p.name === 'model');
+          if (!modelPort) return n;
+          const wired = edges.some((e) => e.target === n.id && e.targetHandle === `in-${modelPort.id}`);
+          if ((n.data as any).llmConnected !== wired) {
+            changed = true;
+            return { ...n, data: { ...n.data, llmConnected: wired } };
+          }
+        }
+        return n;
+      });
+      return changed ? next : curr;
+    });
+  }, [edges, setNodes]);
+
+  // Listen for node data updates from node components
+  useEffect(() => {
+    function onUpdateNodeData(ev: any) {
+      const { nodeId, patch } = ev.detail || {};
+      if (!nodeId || !patch) return;
+      setNodes((curr) => curr.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n)));
+    }
+    window.addEventListener('update-node-data', onUpdateNodeData as any);
+    return () => window.removeEventListener('update-node-data', onUpdateNodeData as any);
+  }, [setNodes]);
+
+  // Resolve values for a node's inputs
+  function resolveInputsFor(node: Node<TypedNodeData>): { values: Record<string, any>; model?: string; error?: string } {
+    const values: Record<string, any> = {};
+    let model: string | undefined = undefined;
+    // Determine model from wiring or local
+    const modelPort = node.data.inputs.find(p => p.type === 'llm' && p.name === 'model');
+    if (modelPort) {
+      const edge = edges.find(e => e.target === node.id && e.targetHandle === `in-${modelPort.id}`);
+      if (edge) {
+        const src = nodes.find(n => n.id === edge.source);
+        if (src) model = src.data.llm?.model;
+      } else {
+        model = node.data.llm?.model;
+      }
+    }
+    for (const p of node.data.inputs) {
+      if (p.type === 'llm' && p.name === 'model') continue;
+      // find incoming
+      const edge = edges.find(e => e.target === node.id && e.targetHandle === `in-${p.id}`);
+      if (edge) {
+        const srcNode = nodes.find(n => n.id === edge.source);
+        if (!srcNode) return { values, model, error: `Missing source node for ${p.name}` };
+        const srcPortId = (edge.sourceHandle || '').replace('out-', '');
+        const srcPort = srcNode.data.outputs.find(op => op.id === srcPortId);
+        const srcName = srcPort?.name || '';
+        let v: any = undefined;
+        if (srcNode.data.kind === 'input') {
+          v = srcNode.data.values?.[srcName];
+        } else {
+          v = srcNode.data.runtime?.outputs?.[srcName];
+        }
+        if (v === undefined || v === null) return { values, model, error: `Upstream value for ${p.name} not available` };
+        values[p.name] = v;
+      } else {
+        // manual value if provided on node
+        const v = node.data.values?.[p.name];
+        if (v === undefined || v === null || v === '') {
+          return { values, model, error: `Input ${p.name} is not connected and has no value` };
+        }
+        values[p.name] = v;
+      }
+    }
+    return { values, model };
+  }
+
+  async function runNode(nodeId: string) {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    // set running
+    setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { ...(n.data.runtime || {}), status: 'running', error: undefined } } } : n));
+
+    const resolution = resolveInputsFor(node);
+    if (resolution.error) {
+      setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { status: 'error', error: resolution.error } } } : n));
+      toast.error(resolution.error);
+      return;
+    }
+
+    const inputsSchema = node.data.inputs.filter(p => !(p.type === 'llm' && p.name === 'model')).map(p => ({ name: p.name, type: p.type, description: p.description }));
+    const outputsSchema = node.data.outputs.map(p => ({ name: p.name, type: p.type, description: p.description }));
+
+    try {
+      const res = await api.runNode(id, {
+        node_kind: node.data.kind,
+        node_title: node.data.title,
+        node_description: node.data.description,
+        inputs_schema: inputsSchema as any,
+        outputs_schema: outputsSchema as any,
+        inputs_values: resolution.values,
+        model: resolution.model,
+        lm_params: node.data.llm ? { temperature: node.data.llm.temperature, top_p: node.data.llm.top_p, max_tokens: node.data.llm.max_tokens } : undefined,
+      });
+      if (res.error) {
+        setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { status: 'error', error: res.error } } } : n));
+        toast.error(res.error);
+        return;
+      }
+      setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { status: 'done', outputs: res.outputs } } } : n));
+    } catch (e: any) {
+      const msg = e?.message || 'Run failed';
+      setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { status: 'error', error: msg } } } : n));
+      toast.error(msg);
+    }
+  }
 
   const onSelectionChange = useCallback(({ nodes: n, edges: e }: { nodes: Node[], edges: Edge[] }) => {
     setSelectedNodeId(n[0]?.id ?? null);
@@ -720,7 +864,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         </ReactFlow>
       </div>
 
-      <NodeInspector node={selectedNode ?? null} onChange={updateSelectedNode} onAddPort={addPort} onRemovePort={removePort} flowId={id} />
+      <NodeInspector node={selectedNode ?? null} onChange={updateSelectedNode} onAddPort={addPort} onRemovePort={removePort} onRunNode={runNode} flowId={id} />
       <Palette 
         open={paletteOpen} 
         onClose={() => {

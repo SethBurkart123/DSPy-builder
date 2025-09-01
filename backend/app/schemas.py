@@ -52,3 +52,28 @@ class FlowSchemaOut(FlowSchemaIn):
     flow_id: str
     created_at: str
     updated_at: str
+
+
+# ---- Execution ----
+
+class RunField(BaseModel):
+    name: str
+    type: str
+    description: str | None = None
+
+
+class NodeRunIn(BaseModel):
+    node_kind: str
+    node_title: str | None = None
+    node_description: str | None = None
+    inputs_schema: list[RunField]
+    outputs_schema: list[RunField]
+    inputs_values: dict
+    model: str | None = None
+    lm_params: dict | None = None
+
+
+class NodeRunOut(BaseModel):
+    outputs: dict | None = None
+    reasoning: str | None = None
+    error: str | None = None

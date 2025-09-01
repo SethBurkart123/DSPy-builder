@@ -1,4 +1,4 @@
-export type PortType = "string" | "string[]" | "boolean" | "float" | "int" | "object" | "array";
+export type PortType = "string" | "string[]" | "boolean" | "float" | "int" | "object" | "array" | "llm";
 
 export type Port = {
   id: string;
@@ -32,13 +32,32 @@ export interface CustomSchema {
   fields: SchemaField[];
 }
 
-export type NodeKind = "chainofthought" | "predict" | "input" | "output";
+export type NodeKind = "chainofthought" | "predict" | "input" | "output" | "llm";
 
 export type TypedNodeData = {
   title: string;
   kind: NodeKind;
   inputs: Port[];
   outputs: Port[];
+  // Optional node-level description (Signature docstring)
+  description?: string;
+  // Optional per-node LM settings or provider settings (used by LLM nodes and defaults on consumers)
+  llm?: {
+    model?: string;
+    temperature?: number;
+    top_p?: number;
+    max_tokens?: number;
+  };
+  // Derived: whether the 'model' llm input is connected
+  llmConnected?: boolean;
+  // Optional ad-hoc values for ports (e.g., input node outputs or manual inputs when running in isolation)
+  values?: Record<string, any>;
+  // Runtime state for UI
+  runtime?: {
+    status?: "idle" | "running" | "done" | "error";
+    outputs?: Record<string, any>;
+    error?: string;
+  };
 };
 
 export const PORT_COLORS: Record<PortType, string> = {
@@ -49,6 +68,7 @@ export const PORT_COLORS: Record<PortType, string> = {
   int: "bg-fuchsia-500",
   object: "bg-purple-500",
   array: "bg-cyan-500",
+  llm: "bg-rose-500",
 };
 
 export const PORT_HEX: Record<PortType, string> = {
@@ -59,4 +79,5 @@ export const PORT_HEX: Record<PortType, string> = {
   int: "#d946ef", // fuchsia-500
   object: "#a855f7", // purple-500
   array: "#06b6d4", // cyan-500
+  llm: "#f43f5e", // rose-500
 };

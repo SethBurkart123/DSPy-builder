@@ -7,6 +7,7 @@ const OPTIONS: { key: NodeKind; label: string; description?: string }[] = [
   { key: "input", label: "Input", description: "Single entry point for user input" },
   { key: "chainofthought", label: "Chain Of Thought", description: "Reason through steps with reasoning output" },
   { key: "predict", label: "Predict", description: "Make predictions without reasoning" },
+  { key: "llm", label: "LLM Provider", description: "Share a model + params to many nodes" },
   { key: "output", label: "Output", description: "Final sink for pipeline outputs" },
 ];
 

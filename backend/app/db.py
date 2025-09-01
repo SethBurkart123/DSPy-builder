@@ -54,3 +54,15 @@ def init_db() -> None:
             """
         )
         conn.commit()
+        # API keys store
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS api_keys (
+                provider TEXT PRIMARY KEY,
+                api_key TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()

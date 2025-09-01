@@ -4,6 +4,7 @@ import { memo, useState, useCallback, useEffect } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
 import { Lock, Plus } from "lucide-react";
 import { PORT_COLORS, PORT_HEX, type TypedNodeData, type PortType } from "./types";
+import { Input } from "@/components/ui/input";
 
 const HANDLE_SIZE = 14; // px
 
@@ -78,8 +79,9 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
     return () => window.removeEventListener('drag-state-change', handleDragStateChange);
   }, []);
 
-  // Calculate minimum height needed for all ports
-  const maxPorts = Math.max(data.inputs?.length || 0, data.outputs?.length || 0);
+  // Calculate minimum height needed for all ports (exclude the special model row)
+  const inputsWithoutModel = (data.inputs || []).filter(p => !(p.type === 'llm' && p.name === 'model'));
+  const maxPorts = Math.max(inputsWithoutModel.length || 0, data.outputs?.length || 0);
   const headerHeight = 41; // Header is py-2 (8px top+bottom) + text height (~25px) + border = ~41px
   const portSpacing = 32;
   const contentPaddingTop = 12; // p-3 = 12px padding
@@ -87,7 +89,8 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
   const minContentHeight = maxPorts * portSpacing;
   const dropZoneHeight = 28; // Height for the drop zone
   const showDropZone = dragState?.isDragging && isDragHovering && dragState.portType && dragState.sourceNodeId !== id && data.kind !== 'input';
-  const minTotalHeight = headerHeight + minContentHeight + baseContentPadding + (showDropZone ? dropZoneHeight : 0);
+  const modelRowHeight = (data.kind === 'predict' || data.kind === 'chainofthought') ? 32 : 0;
+  const minTotalHeight = headerHeight + modelRowHeight + minContentHeight + baseContentPadding + (showDropZone ? dropZoneHeight : 0);
 
   const handleMouseEnter = useCallback(() => {
     if (dragState?.isDragging && dragState.portType && dragState.sourceNodeId !== id) {
@@ -116,17 +119,36 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
     }
   }, [id, dragState]);
 
+  const status = data.runtime?.status;
+  const boxShadow = status === 'running' ? '0 0 14px rgba(244,63,94,0.6)' : status === 'done' ? '0 0 12px rgba(16,185,129,0.5)' : undefined;
+  function formatValue(v: any): string {
+    try {
+      if (typeof v === 'string') return v;
+      return JSON.stringify(v);
+    } catch { return String(v); }
+  }
+
   return (
     <div 
-      className={`w-[240px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "ring-2 ring-primary" : ""} relative flex flex-col`}
-      style={{ minHeight: `${minTotalHeight}px` }}
+      className={`w-[240px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "outline-primary/50 outline-2" : ""} relative flex flex-col`}
+      style={{ minHeight: `${minTotalHeight}px`, boxShadow }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {/* Input handles positioned at left edge */}
       {data.inputs?.map((p, index) => {
         const s = handleStylesFor(p.type);
-        const handleTop = headerHeight + contentPaddingTop + (index * portSpacing) + (portSpacing / 2); // center in each port row
+        const isModel = (p.type === 'llm' && p.name === 'model');
+        let handleTop: number;
+        if (isModel && modelRowHeight > 0) {
+          // center on the special model row
+          handleTop = headerHeight + contentPaddingTop + (modelRowHeight / 2);
+        } else {
+          // compute visual index excluding the model row if present
+          const adjust = (data.inputs?.find(q => q.type === 'llm' && q.name === 'model') ? 1 : 0);
+          const visualIndex = index - adjust;
+          handleTop = headerHeight + contentPaddingTop + modelRowHeight + (visualIndex * portSpacing) + (portSpacing / 2);
+        }
         return (
           <Handle
             key={`in-${p.id}`}
@@ -146,7 +168,7 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
       {/* Output handles positioned at right edge */}
       {data.outputs?.map((p, index) => {
         const s = handleStylesFor(p.type);
-        const handleTop = headerHeight + contentPaddingTop + (index * portSpacing) + (portSpacing / 2); // center in each port row
+        const handleTop = headerHeight + contentPaddingTop + modelRowHeight + (index * portSpacing) + (portSpacing / 2); // center in each port row
         return (
           <Handle
             key={`out-${p.id}`}
@@ -168,9 +190,30 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 p-3 flex-1">
+        {(data.kind === 'predict' || data.kind === 'chainofthought') && (
+          <div className="col-span-2 -mt-1 flex items-center" style={{ height: 32 }}>
+            {!data.llmConnected ? (
+              <Input
+                value={data.llm?.model ?? 'gemini/gemini-2.5-flash'}
+                onChange={(e) => {
+                  const ev = new CustomEvent('update-node-data', {
+                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), model: e.target.value || undefined } } }
+                  });
+                  window.dispatchEvent(ev);
+                }}
+                placeholder="Model"
+                className="h-7 text-[11px]"
+              />
+            ) : (
+              <div className="h-7 text-[11px] px-2 rounded bg-muted/60 flex items-center text-muted-foreground">
+                model
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex flex-col justify-start min-w-0">
           <div>
-            {data.inputs?.map((p, index) => (
+            {data.inputs?.filter(p => !(p.type === 'llm' && p.name === 'model')).map((p, index) => (
               <div 
                 key={p.id} 
                 className="flex items-center"
@@ -231,9 +274,13 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
                     )}
                     {p.locked && <Lock className="h-3 w-3" />}
                   </div>
-                  {p.description && (
+                  {(p.description || (data.runtime?.outputs && data.runtime.outputs[p.name] !== undefined) || (data.kind === 'input' && data.values && data.values[p.name] !== undefined)) && (
                     <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">
-                      {p.description}
+                      {data.runtime?.outputs && data.runtime.outputs[p.name] !== undefined
+                        ? formatValue(data.runtime.outputs[p.name])
+                        : (data.kind === 'input' && data.values && data.values[p.name] !== undefined
+                            ? formatValue(data.values[p.name])
+                            : p.description)}
                     </div>
                   )}
                 </div>
