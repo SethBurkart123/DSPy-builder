@@ -60,8 +60,8 @@ export default function NodeInspector({
 
   if (!hasNode) return null;
 
-  const canEditInputs = data?.kind !== 'input';
-  const canEditOutputs = data?.kind !== 'output';
+  const canEditInputs = data?.kind !== 'input' && data?.kind !== 'llm';
+  const canEditOutputs = data?.kind !== 'output' && data?.kind !== 'llm';
 
   function updatePort(direction: "inputs" | "outputs", idx: number, patch: Partial<Port>) {
     if (!data) return;

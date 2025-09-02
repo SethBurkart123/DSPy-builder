@@ -52,6 +52,17 @@ function handleStylesFor(type: PortType): { className: string; style: React.CSSP
           clipPath: "polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)",
         },
       };
+    case "llm":
+      return {
+        className: `${PORT_COLORS[type]}`,
+        style: {
+          ...baseStyle,
+          borderRadius: 2,
+          // vertically stretched narrow rectangle
+          clipPath: "inset(0 30% 0 30%)",
+          backgroundColor: '#64748b', // gray for llm
+        },
+      };
     default:
       return { className: `${PORT_COLORS.string}`, style: { ...baseStyle, borderRadius: HANDLE_SIZE } };
   }
@@ -209,6 +220,64 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
                 model
               </div>
             )}
+          </div>
+        )}
+        {data.kind === 'llm' && (
+          <div className="col-span-2 space-y-2">
+            <div>
+              <Input
+                value={data.llm?.model ?? 'gemini/gemini-2.5-flash'}
+                onChange={(e) => {
+                  const ev = new CustomEvent('update-node-data', {
+                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), model: e.target.value || undefined } } }
+                  });
+                  window.dispatchEvent(ev);
+                }}
+                placeholder="Model"
+                className="h-7 text-[11px]"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Temp"
+                value={data.llm?.temperature ?? ''}
+                onChange={(e) => {
+                  const ev = new CustomEvent('update-node-data', {
+                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), temperature: e.target.value === '' ? undefined : Number(e.target.value) } } }
+                  });
+                  window.dispatchEvent(ev);
+                }}
+                className="h-7 text-[11px]"
+              />
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Top P"
+                value={data.llm?.top_p ?? ''}
+                onChange={(e) => {
+                  const ev = new CustomEvent('update-node-data', {
+                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), top_p: e.target.value === '' ? undefined : Number(e.target.value) } } }
+                  });
+                  window.dispatchEvent(ev);
+                }}
+                className="h-7 text-[11px]"
+              />
+              <Input
+                type="number"
+                step="1"
+                placeholder="Max Tok"
+                value={data.llm?.max_tokens ?? ''}
+                onChange={(e) => {
+                  const ev = new CustomEvent('update-node-data', {
+                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), max_tokens: e.target.value === '' ? undefined : Number(e.target.value) } } }
+                  });
+                  window.dispatchEvent(ev);
+                }}
+                className="h-7 text-[11px]"
+              />
+            </div>
           </div>
         )}
         <div className="flex flex-col justify-start min-w-0">

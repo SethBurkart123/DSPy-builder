@@ -252,14 +252,15 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
                 targetHandle: `in-${newInputPort.id}`,
               };
               
-              const edgeColor = PORT_HEX[portType as PortType] || "#64748b";
-              setEdges((eds) => addEdge({
-                ...newConnection,
-                style: {
-                  stroke: edgeColor,
-                  strokeWidth: 3,
-                },
-              }, eds));
+      const edgeColor = (portType as PortType) === 'llm' ? "#64748b" : (PORT_HEX[portType as PortType] || "#64748b");
+      const edgeWidth = (portType as PortType) === 'llm' ? 2 : 3;
+      setEdges((eds) => addEdge({
+        ...newConnection,
+        style: {
+          stroke: edgeColor,
+          strokeWidth: edgeWidth,
+        },
+      }, eds));
             }
           }
           return currentNodes;
@@ -324,13 +325,14 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       
       // Get the port type to style the edge
       const portType = portTypeFor(connection.source, connection.sourceHandle);
-      const edgeColor = portType ? PORT_HEX[portType] : "#64748b"; // default gray
+      const edgeColor = portType === 'llm' ? "#64748b" : (portType ? PORT_HEX[portType] : "#64748b");
+      const edgeWidth = portType === 'llm' ? 2 : 3;
       
       setEdges((eds) => addEdge({ 
         ...connection,
         style: { 
           stroke: edgeColor,
-          strokeWidth: 3,
+          strokeWidth: edgeWidth,
         },
       }, eds));
     },
@@ -568,7 +570,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   // Palette and quick add
   function addNodeAtCenter(kind: NodeKind) {
     const labelForKind = (k: NodeKind) =>
-      k === 'chainofthought' ? 'Chain Of Thought' : k === 'predict' ? 'Predict' : k === 'input' ? 'Input' : 'Output';
+      k === 'chainofthought' ? 'Chain Of Thought' : k === 'predict' ? 'Predict' : k === 'input' ? 'Input' : k === 'llm' ? 'LLM Provider' : 'Output';
     // Prefer placing at cursor if available, otherwise center
     let pos = undefined as { x: number; y: number } | undefined;
     if (lastMousePos && rfInstance) {
