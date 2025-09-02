@@ -1,362 +1,85 @@
 "use client";
 
-import { memo, useState, useCallback, useEffect } from "react";
-import { Handle, Position, NodeProps } from "reactflow";
-import { Lock, Plus } from "lucide-react";
-import { PORT_COLORS, PORT_HEX, type TypedNodeData, type PortType } from "./types";
-import { Input } from "@/components/ui/input";
+import { memo } from "react";
+import { NodeProps } from "reactflow";
+import { type TypedNodeData } from "./types";
+import { getNodeDefinition } from "@/lib/node-def";
+import { HEADER_HEIGHT, PORT_ROW_HEIGHT } from "@/lib/flow-utils";
+import { PortListSection, ControlGroupSection } from "./sections";
 
-const HANDLE_SIZE = 14; // px
-
-function handleStylesFor(type: PortType): { className: string; style: React.CSSProperties } {
-  const baseStyle: React.CSSProperties = {
-    width: HANDLE_SIZE,
-    height: HANDLE_SIZE,
-    backgroundColor: PORT_HEX[type],
-  };
-
-  switch (type) {
-    case "string":
-      return { className: `${PORT_COLORS[type]}`, style: { ...baseStyle, borderRadius: HANDLE_SIZE } };
-    case "string[]":
-      return { className: `${PORT_COLORS[type]}`, style: { ...baseStyle, borderRadius: 2 } }; // square
-    case "boolean":
-      // diamond via clip-path (avoid transform which would break positioning)
-      return {
-        className: `${PORT_COLORS[type]}`,
-        style: { ...baseStyle, clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" },
-      };
-    case "float":
-      return {
-        className: `${PORT_COLORS[type]}`,
-        style: {
-          ...baseStyle,
-          clipPath: "polygon(12% 50%, 28% 8%, 72% 8%, 88% 50%, 72% 92%, 28% 92%)",
-        },
-      };
-    case "int":
-      return {
-        className: `${PORT_COLORS[type]}`,
-        style: { ...baseStyle, clipPath: "polygon(50% 0, 0 100%, 100% 100%)" },
-      };
-    case "object":
-      return {
-        className: `${PORT_COLORS[type]}`,
-        style: { ...baseStyle, borderRadius: 2 },
-      };
-    case "array":
-      return {
-        className: `${PORT_COLORS[type]}`,
-        style: {
-          ...baseStyle,
-          clipPath: "polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)",
-        },
-      };
-    case "llm":
-      return {
-        className: `${PORT_COLORS[type]}`,
-        style: {
-          ...baseStyle,
-          borderRadius: 2,
-          // vertically stretched narrow rectangle
-          clipPath: "inset(0 30% 0 30%)",
-          backgroundColor: '#64748b', // gray for llm
-        },
-      };
-    default:
-      return { className: `${PORT_COLORS.string}`, style: { ...baseStyle, borderRadius: HANDLE_SIZE } };
-  }
-}
-
-// Add a type for drag state that can be passed as a prop
-export type DragState = {
-  isDragging: boolean;
-  portType: PortType | null;
-  sourceNodeId: string | null;
-  handleId: string | null;
-} | null;
+// Handle shapes + placement are now inside sections
 
 function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
-  const [isDragHovering, setIsDragHovering] = useState(false);
-  const [dragState, setDragState] = useState<DragState>(null);
-
-  // Listen for drag state changes from the main flow component
-  useEffect(() => {
-    function handleDragStateChange(event: any) {
-      setDragState(event.detail);
-    }
-
-    window.addEventListener('drag-state-change', handleDragStateChange);
-    return () => window.removeEventListener('drag-state-change', handleDragStateChange);
-  }, []);
 
   // Calculate minimum height needed for all ports (exclude the special model row)
   const inputsWithoutModel = (data.inputs || []).filter(p => !(p.type === 'llm' && p.name === 'model'));
   const maxPorts = Math.max(inputsWithoutModel.length || 0, data.outputs?.length || 0);
-  const headerHeight = 41; // Header is py-2 (8px top+bottom) + text height (~25px) + border = ~41px
-  const portSpacing = 32;
-  const contentPaddingTop = 12; // p-3 = 12px padding
-  const baseContentPadding = 24; // padding top + bottom
+  const headerHeight = HEADER_HEIGHT;
+  const portSpacing = PORT_ROW_HEIGHT;
+  const baseContentPadding = 24; // grid padding top + bottom
   const minContentHeight = maxPorts * portSpacing;
-  const dropZoneHeight = 28; // Height for the drop zone
-  const showDropZone = dragState?.isDragging && isDragHovering && dragState.portType && dragState.sourceNodeId !== id && data.kind !== 'input';
-  const modelRowHeight = (data.kind === 'predict' || data.kind === 'chainofthought') ? 32 : 0;
-  const minTotalHeight = headerHeight + modelRowHeight + minContentHeight + baseContentPadding + (showDropZone ? dropZoneHeight : 0);
-
-  const handleMouseEnter = useCallback(() => {
-    if (dragState?.isDragging && dragState.portType && dragState.sourceNodeId !== id) {
-      setIsDragHovering(true);
-    }
-  }, [dragState, id]);
-
-  const handleMouseLeave = useCallback(() => {
-    setIsDragHovering(false);
-  }, []);
-
-  const handleDropZoneClick = useCallback(() => {
-    if (dragState?.isDragging && dragState.portType && dragState.sourceNodeId && dragState.handleId) {
-      // Trigger the add input port functionality
-      const eventDetail = {
-        targetNodeId: id,
-        portType: dragState.portType,
-        sourceNodeId: dragState.sourceNodeId,
-        sourceHandleId: dragState.handleId
-      };
-      
-      const event = new CustomEvent('add-input-port', {
-        detail: eventDetail
-      });
-      window.dispatchEvent(event);
-    }
-  }, [id, dragState]);
+  const minTotalHeight = headerHeight + minContentHeight + baseContentPadding;
 
   const status = data.runtime?.status;
-  const boxShadow = status === 'running' ? '0 0 14px rgba(244,63,94,0.6)' : status === 'done' ? '0 0 12px rgba(16,185,129,0.5)' : undefined;
-  function formatValue(v: any): string {
-    try {
-      if (typeof v === 'string') return v;
-      return JSON.stringify(v);
-    } catch { return String(v); }
-  }
+  const boxShadow = status === 'running'
+    ? '0 0 14px rgba(244,63,94,0.6)'
+    : status === 'done'
+    ? '0 0 12px rgba(16,185,129,0.5)'
+    : undefined;
 
   return (
     <div 
       className={`w-[240px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "outline-primary/50 outline-2" : ""} relative flex flex-col`}
       style={{ minHeight: `${minTotalHeight}px`, boxShadow }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
-      {/* Input handles positioned at left edge */}
-      {data.inputs?.map((p, index) => {
-        const s = handleStylesFor(p.type);
-        const isModel = (p.type === 'llm' && p.name === 'model');
-        let handleTop: number;
-        if (isModel && modelRowHeight > 0) {
-          // center on the special model row
-          handleTop = headerHeight + contentPaddingTop + (modelRowHeight / 2);
-        } else {
-          // compute visual index excluding the model row if present
-          const adjust = (data.inputs?.find(q => q.type === 'llm' && q.name === 'model') ? 1 : 0);
-          const visualIndex = index - adjust;
-          handleTop = headerHeight + contentPaddingTop + modelRowHeight + (visualIndex * portSpacing) + (portSpacing / 2);
-        }
-        return (
-          <Handle
-            key={`in-${p.id}`}
-            id={`in-${p.id}`}
-            type="target"
-            position={Position.Left}
-            className={`border !border-border ${s.className} absolute`}
-            style={{
-              ...s.style,
-              left: -HANDLE_SIZE / 2,
-              top: handleTop,
-            }}
-          />
-        );
-      })}
-
-      {/* Output handles positioned at right edge */}
-      {data.outputs?.map((p, index) => {
-        const s = handleStylesFor(p.type);
-        const handleTop = headerHeight + contentPaddingTop + modelRowHeight + (index * portSpacing) + (portSpacing / 2); // center in each port row
-        return (
-          <Handle
-            key={`out-${p.id}`}
-            id={`out-${p.id}`}
-            type="source"
-            position={Position.Right}
-            className={`border !border-border ${s.className} absolute`}
-            style={{
-              ...s.style,
-              right: -HANDLE_SIZE / 2,
-              top: handleTop,
-            }}
-          />
-        );
-      })}
-
       <div className="flex items-center justify-between rounded-t-lg border-b bg-muted/50 px-3 py-2 pb-[14px]">
         <div className="text-xs font-semibold truncate">{data.title}</div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 p-3 flex-1">
-        {(data.kind === 'predict' || data.kind === 'chainofthought') && (
-          <div className="col-span-2 -mt-1 flex items-center" style={{ height: 32 }}>
-            {!data.llmConnected ? (
-              <Input
-                value={data.llm?.model ?? 'gemini/gemini-2.5-flash'}
-                onChange={(e) => {
-                  const ev = new CustomEvent('update-node-data', {
-                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), model: e.target.value || undefined } } }
-                  });
-                  window.dispatchEvent(ev);
-                }}
-                placeholder="Model"
-                className="h-7 text-[11px]"
-              />
-            ) : (
-              <div className="h-7 text-[11px] px-2 rounded bg-muted/60 flex items-center text-muted-foreground">
-                model
-              </div>
-            )}
-          </div>
-        )}
-        {data.kind === 'llm' && (
-          <div className="col-span-2 space-y-2">
-            <div>
-              <Input
-                value={data.llm?.model ?? 'gemini/gemini-2.5-flash'}
-                onChange={(e) => {
-                  const ev = new CustomEvent('update-node-data', {
-                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), model: e.target.value || undefined } } }
-                  });
-                  window.dispatchEvent(ev);
-                }}
-                placeholder="Model"
-                className="h-7 text-[11px]"
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="Temp"
-                value={data.llm?.temperature ?? ''}
-                onChange={(e) => {
-                  const ev = new CustomEvent('update-node-data', {
-                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), temperature: e.target.value === '' ? undefined : Number(e.target.value) } } }
-                  });
-                  window.dispatchEvent(ev);
-                }}
-                className="h-7 text-[11px]"
-              />
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="Top P"
-                value={data.llm?.top_p ?? ''}
-                onChange={(e) => {
-                  const ev = new CustomEvent('update-node-data', {
-                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), top_p: e.target.value === '' ? undefined : Number(e.target.value) } } }
-                  });
-                  window.dispatchEvent(ev);
-                }}
-                className="h-7 text-[11px]"
-              />
-              <Input
-                type="number"
-                step="1"
-                placeholder="Max Tok"
-                value={data.llm?.max_tokens ?? ''}
-                onChange={(e) => {
-                  const ev = new CustomEvent('update-node-data', {
-                    detail: { nodeId: id, patch: { llm: { ...(data.llm || {}), max_tokens: e.target.value === '' ? undefined : Number(e.target.value) } } }
-                  });
-                  window.dispatchEvent(ev);
-                }}
-                className="h-7 text-[11px]"
-              />
-            </div>
-          </div>
-        )}
-        <div className="flex flex-col justify-start min-w-0">
-          <div>
-            {data.inputs?.filter(p => !(p.type === 'llm' && p.name === 'model')).map((p, index) => (
-              <div 
-                key={p.id} 
-                className="flex items-center"
-                style={{ height: `${portSpacing}px` }}
-              >
-                <div className="text-xs min-w-0 flex-1">
-                  <div className={`truncate flex items-center gap-1 ${p.locked ? 'text-amber-700 font-medium' : ''}`}>
-                    {p.locked && <Lock className="h-3 w-3 text-amber-600" />}
-                    {p.name}
-                    {p.type === "object" && p.customSchema && (
-                      <span className="text-gray-500 ml-1">({p.customSchema.name})</span>
-                    )}
-                  </div>
-                  {p.description && (
-                    <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">
-                      {p.description}
-                    </div>
-                  )}
+        {(() => {
+          const def = getNodeDefinition(data.kind);
+          return def.sections.map((sec) => {
+            const span = (sec as any).colSpan === 1 ? "col-span-1" : "col-span-2";
+            if (sec.type === "empty_spacer") {
+              return <div key={sec.id} className={span} />;
+            }
+            if (sec.type === "control_group") {
+              return (
+                <div key={sec.id} className={span}>
+                  <ControlGroupSection nodeId={id} data={data} controls={sec.controls} />
                 </div>
-              </div>
-            ))}
-
-            {showDropZone && dragState?.portType && (
-              <div 
-                className="flex items-center text-[10px] w-full relative"
-                style={{ height: `${portSpacing}px` }}
-                onMouseUp={handleDropZoneClick}
-              >
-                <Handle
-                  type="target"
-                  position={Position.Left}
-                  className={`border !border-border absolute -ml-3`}
-                  style={{
-                    ...handleStylesFor(dragState.portType).style,
-                    left: -HANDLE_SIZE / 2,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                  }}
-                />
-                <span className="italic opacity-80">{dragState.portType.charAt(0).toUpperCase() + dragState.portType.slice(1)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="text-right flex flex-col justify-start min-w-0">
-          <div>
-            {data.outputs?.map((p, index) => (
-              <div 
-                key={p.id} 
-                className="flex items-center justify-end gap-2"
-                style={{ height: `${portSpacing}px` }}
-              >
-                <div className="text-xs text-right min-w-0 flex-1">
-                  <div className={`truncate flex items-center justify-end gap-1 ${p.locked ? 'opacity-90 font-medium' : ''}`}>
-                    {p.name}
-                    {p.type === "object" && p.customSchema && (
-                      <span className="text-gray-500 ml-1">({p.customSchema.name})</span>
-                    )}
-                    {p.locked && <Lock className="h-3 w-3" />}
-                  </div>
-                  {(p.description || (data.runtime?.outputs && data.runtime.outputs[p.name] !== undefined) || (data.kind === 'input' && data.values && data.values[p.name] !== undefined)) && (
-                    <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">
-                      {data.runtime?.outputs && data.runtime.outputs[p.name] !== undefined
-                        ? formatValue(data.runtime.outputs[p.name])
-                        : (data.kind === 'input' && data.values && data.values[p.name] !== undefined
-                            ? formatValue(data.values[p.name])
-                            : p.description)}
-                    </div>
-                  )}
+              );
+            }
+            if (sec.type === "port_list" && sec.role === "inputs") {
+              return (
+                <div key={sec.id} className={span}>
+                  <PortListSection
+                    nodeId={id}
+                    data={data}
+                    role="inputs"
+                    autogrow={sec.autogrow}
+                    accepts={sec.accepts}
+                  />
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              );
+            }
+            if (sec.type === "port_list" && sec.role === "outputs") {
+              return (
+                <div key={sec.id} className={span}>
+                  <PortListSection
+                    nodeId={id}
+                    data={data}
+                    role="outputs"
+                    autogrow={sec.autogrow}
+                    accepts={sec.accepts}
+                  />
+                </div>
+              );
+            }
+            return null;
+          });
+        })()}
       </div>
     </div>
   );

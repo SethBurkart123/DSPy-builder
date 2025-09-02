@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SchemaCreator } from "@/components/schema/SchemaCreator";
-import { SchemaBrowser } from "@/components/schema/SchemaBrowser";
 import { SchemaSelector } from "@/components/schema/SchemaSelector";
 import { generateDSPyCode } from "@/lib/generate-dspy";
 
@@ -38,6 +37,7 @@ export default function NodeInspector({
   onRemovePort,
   onRunNode,
   flowId,
+  finalOutputs,
 }: {
   node: Node<TypedNodeData> | null;
   onChange: (data: TypedNodeData) => void;
@@ -45,6 +45,7 @@ export default function NodeInspector({
   onRemovePort: (direction: "inputs" | "outputs", portId: string) => void;
   onRunNode?: (nodeId: string) => void;
   flowId: string;
+  finalOutputs?: { name: string; value: any }[];
 }) {
   const data = node?.data;
   const hasNode = !!node;
@@ -52,7 +53,6 @@ export default function NodeInspector({
   
   const [schemaCreatorOpen, setSchemaCreatorOpen] = useState(false);
   const [editingSchema, setEditingSchema] = useState<CustomSchema | null>(null);
-  const [schemaBrowserOpen, setSchemaBrowserOpen] = useState(false);
   const [schemaSelectorOpen, setSchemaSelectorOpen] = useState(false);
   const [editingPortIndex, setEditingPortIndex] = useState<{ direction: "inputs" | "outputs", index: number } | null>(null);
   const [showCode, setShowCode] = useState(false);
@@ -78,10 +78,6 @@ export default function NodeInspector({
   const handleCreateSchema = () => {
     setEditingSchema(null);
     setSchemaCreatorOpen(true);
-  };
-
-  const handleBrowseSchemas = () => {
-    setSchemaBrowserOpen(true);
   };
 
   const handleSchemaCreated = (schema: CustomSchema) => {
@@ -159,77 +155,60 @@ export default function NodeInspector({
   };
 
   return (
-    <div className="fixed right-4 top-16 z-40 w-80 rounded-lg border bg-background p-4 shadow-lg">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {(data?.kind === 'predict' || data?.kind === 'chainofthought') && (
-          <Button size="sm" onClick={() => onRunNode?.(node!.id)}>Run</Button>
-        )}
+    <div className="fixed right-4 top-16 z-40 w-96 rounded-lg border bg-background p-4 shadow-lg">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-base font-semibold truncate">{title}</h3>
+        <div className="flex items-center gap-2">
+          {(data?.kind === 'predict' || data?.kind === 'chainofthought') && (
+            <Button size="sm" onClick={() => onRunNode?.(node!.id)}>Run</Button>
+          )}
+          {(data && !(data.kind === 'input' || data.kind === 'output' || data.kind === 'llm')) && (
+            <Button variant="outline" size="sm" onClick={() => setShowCode((v) => !v)}>
+              {showCode ? 'Hide DSPy Code' : 'Show DSPy Code'}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 space-y-6">
-        {/* Node-level description */}
-        <section>
-          <div className="mb-2">
-            <h4 className="text-xs font-medium uppercase text-muted-foreground">Description</h4>
-          </div>
-          <Textarea
-            className="text-xs"
-            value={data?.description || ""}
-            onChange={(e) => updateNode({ description: e.target.value })}
-            placeholder="Optional node description (Signature docstring)"
-            rows={3}
-          />
-        </section>
-
-        {/* LLM Provider settings */}
-        {data?.kind === 'llm' && (
+        {/* Output node final outputs preview */}
+        {data?.kind === 'output' && finalOutputs && finalOutputs.length > 0 && (
           <section>
             <div className="mb-2">
-              <h4 className="text-xs font-medium uppercase text-muted-foreground">LLM Provider</h4>
+              <h4 className="text-xs font-medium uppercase text-muted-foreground">Final Outputs</h4>
             </div>
             <div className="space-y-2">
-              <div>
-                <label className="text-[11px] text-muted-foreground">Model</label>
-                <Input
-                  value={data.llm?.model ?? ''}
-                  onChange={(e) => updateNode({ llm: { ...data.llm, model: e.target.value || undefined } })}
-                  placeholder="e.g. gemini/gemini-2.5-flash"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="text-[11px] text-muted-foreground">Temp</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={data.llm?.temperature ?? ''}
-                    onChange={(e) => updateNode({ llm: { ...data.llm, temperature: e.target.value === '' ? undefined : Number(e.target.value) } })}
-                    placeholder=""
-                  />
+              {finalOutputs.map((fo) => (
+                <div key={fo.name}>
+                  <div className="text-[11px] font-medium text-muted-foreground">{fo.name}</div>
+                  <pre className="mt-1 max-h-40 overflow-auto rounded border bg-muted/40 p-2 text-[11px] whitespace-pre-wrap">
+{(() => {
+  try {
+    if (typeof fo.value === 'string') return fo.value;
+    return JSON.stringify(fo.value, null, 2);
+  } catch {
+    return String(fo.value);
+  }
+})()}
+                  </pre>
                 </div>
-                <div>
-                  <label className="text-[11px] text-muted-foreground">Top P</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={data.llm?.top_p ?? ''}
-                    onChange={(e) => updateNode({ llm: { ...data.llm, top_p: e.target.value === '' ? undefined : Number(e.target.value) } })}
-                    placeholder=""
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] text-muted-foreground">Max Tokens</label>
-                  <Input
-                    type="number"
-                    step="1"
-                    value={data.llm?.max_tokens ?? ''}
-                    onChange={(e) => updateNode({ llm: { ...data.llm, max_tokens: e.target.value === '' ? undefined : Number(e.target.value) } })}
-                    placeholder=""
-                  />
-                </div>
-              </div>
+              ))}
             </div>
+          </section>
+        )}
+        {/* Node-level description (hidden for input/output/llm) */}
+        {!(data?.kind === 'input' || data?.kind === 'output' || data?.kind === 'llm') && (
+          <section>
+            <div className="mb-2">
+              <h4 className="text-xs font-medium uppercase text-muted-foreground">Description</h4>
+            </div>
+            <Textarea
+              className="text-xs"
+              value={data?.description || ""}
+              onChange={(e) => updateNode({ description: e.target.value })}
+              placeholder="Optional node description (Signature docstring)"
+              rows={3}
+            />
           </section>
         )}
 
@@ -253,40 +232,54 @@ export default function NodeInspector({
             </div>
           </section>
         )}
+        {/* Inputs */}
         {canEditInputs && (
         <section>
           <div className="mb-2">
             <h4 className="text-xs font-medium uppercase text-muted-foreground">Inputs</h4>
           </div>
           <div className="space-y-3">
-            {data?.inputs?.map((p, idx) => (
-              <div key={p.id} className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Input
-                    className="flex-1"
-                    value={p.name}
-                    onChange={(e) => updatePort("inputs", idx, { name: e.target.value })}
-                    placeholder="Port name"
-                  />
-                  {renderPortTypeDropdown(p, "inputs", idx)}
-                  <Button 
-                    variant="ghost"
-                    size="sm"
-                    className={`text-red-600 hover:text-red-700 hover:bg-red-50 ${p.locked ? 'opacity-40 cursor-not-allowed' : ''}`}
+            {data?.inputs
+              // Hide special LLM provider input on predict/chainofthought
+              ?.filter(p => {
+                if (!data) return true;
+                const isLLMModel = p.type === 'llm' && p.name === 'model';
+                const isHiddenForKind = data.kind === 'predict' || data.kind === 'chainofthought';
+                return !(isHiddenForKind && isLLMModel);
+              })
+              .map((p, idx) => {
+                const actualIdx = data?.inputs?.findIndex(port => port.id === p.id) ?? idx;
+                return (
+               <div key={p.id} className="space-y-2">
+                 <div className="flex items-center gap-2">
+                   <Input
+                     className="flex-1"
+                     value={p.name}
+                    onChange={(e) => updatePort("inputs", actualIdx, { name: e.target.value })}
+                     placeholder="Port name"
+                   />
+                   {renderPortTypeDropdown(p, "inputs", actualIdx)}
+                   <Button 
+                     variant="ghost"
+                     size="sm"
+                     className={`text-red-600 hover:text-red-700 hover:bg-red-50 ${p.locked ? 'opacity-40 cursor-not-allowed' : ''}`}
                     onClick={() => { if (!p.locked) onRemovePort("inputs", p.id); }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                   >
+                     <Trash2 className="h-3 w-3" />
+                   </Button>
+                 </div>
+                  {data?.kind !== 'output' && (
+                    <Textarea
+                      className="text-xs"
+                      value={p.description || ""}
+                      onChange={(e) => updatePort("inputs", actualIdx, { description: e.target.value })}
+                      placeholder="Description (optional)"
+                      rows={2}
+                    />
+                  )}
                 </div>
-                <Textarea
-                  className="text-xs"
-                  value={p.description || ""}
-                  onChange={(e) => updatePort("inputs", idx, { description: e.target.value })}
-                  placeholder="Description (optional)"
-                  rows={2}
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
           <Button 
             variant="outline"
@@ -349,29 +342,7 @@ export default function NodeInspector({
         </section>
         )}
 
-        {/* Schema Management */}
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-medium uppercase text-muted-foreground">Schema Library</h4>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={handleBrowseSchemas}
-              className="h-auto p-0 text-xs"
-            >
-              <Library className="h-3 w-3" />
-              Browse
-            </Button>
-          </div>
-          <Button
-            variant="outline"
-            className="w-full border-dashed"
-            onClick={handleCreateSchema}
-          >
-            <Plus className="h-4 w-4" />
-            Create Custom Schema
-          </Button>
-        </section>
+        {/* Schema creation and selection remain available contextually via dropdowns */}
       </div>
 
       {/* Schema Creator Modal */}
@@ -384,28 +355,6 @@ export default function NodeInspector({
         }}
         onSave={handleSchemaCreated}
         initialSchema={editingSchema ?? undefined}
-        flowId={flowId}
-      />
-
-      {/* Schema Browser Modal */}
-      <SchemaBrowser
-        isOpen={schemaBrowserOpen}
-        onClose={() => {
-          setSchemaBrowserOpen(false);
-          setEditingPortIndex(null);
-        }}
-        onCreateNew={() => {
-          setSchemaBrowserOpen(false);
-          setEditingSchema(null);
-          setSchemaCreatorOpen(true);
-        }}
-        onEdit={(schema) => {
-          setSchemaBrowserOpen(false);
-          setEditingSchema(schema);
-          setSchemaCreatorOpen(true);
-        }}
-        onSelect={handleSchemaSelected}
-        mode={editingPortIndex ? "select" : "browse"}
         flowId={flowId}
       />
 
@@ -422,17 +371,12 @@ export default function NodeInspector({
         flowId={flowId}
       />
 
-      {/* DSPy code preview */}
-      {data && (
+      {/* DSPy code preview inline under header toggle */}
+      {(data && showCode) && (
         <div className="mt-3">
-          <Button variant="outline" size="sm" onClick={() => setShowCode((v) => !v)}>
-            {showCode ? 'Hide DSPy Code' : 'Show DSPy Code'}
-          </Button>
-          {showCode && (
-            <pre className="mt-2 max-h-64 overflow-auto rounded border bg-muted/40 p-2 text-[11px] whitespace-pre-wrap">
+          <pre className="max-h-64 overflow-auto rounded border bg-muted/40 p-2 text-[11px] whitespace-pre-wrap">
 {generateDSPyCode(data)}
-            </pre>
-          )}
+          </pre>
         </div>
       )}
     </div>

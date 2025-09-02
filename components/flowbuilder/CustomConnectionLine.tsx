@@ -1,7 +1,8 @@
 "use client";
 
 import { ConnectionLineComponentProps, getBezierPath, Position } from "reactflow";
-import { PORT_HEX, type PortType, type Port } from "./types";
+import type { Port } from "./types";
+import { edgeStyleForType } from "@/lib/flow-utils";
 
 export function CustomConnectionLine({ 
   fromX, 
@@ -28,8 +29,8 @@ export function CustomConnectionLine({
       port = fromNode.data.inputs?.find((p: Port) => p.id === portId);
     }
     
-    if (port && port.type in PORT_HEX) {
-      edgeColor = PORT_HEX[port.type as PortType];
+    if (port) {
+      edgeColor = edgeStyleForType(port.type).stroke;
     }
   }
 
@@ -60,13 +61,7 @@ export function CustomConnectionLine({
 
   return (
     <g>
-      <path
-        fill="none"
-        stroke={edgeColor}
-        strokeWidth={3}
-        className="animated"
-        d={edgePath}
-      />
+      <path fill="none" stroke={edgeColor} strokeWidth={3} strokeLinecap="round" d={edgePath} />
       <circle
         cx={toX}
         cy={toY}

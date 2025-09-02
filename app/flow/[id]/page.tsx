@@ -19,14 +19,14 @@ import "reactflow/dist/style.css";
 
 import Topbar from "@/components/flowbuilder/Topbar";
 import NodeInspector from "@/components/flowbuilder/NodeInspector";
-import { TypedNode, type DragState } from "@/components/flowbuilder/TypedNode";
+import { TypedNode } from "@/components/flowbuilder/TypedNode";
 import { CustomConnectionLine } from "@/components/flowbuilder/CustomConnectionLine";
 import type { TypedNodeData, Port, NodeKind, PortType } from "@/components/flowbuilder/types";
-import { PORT_HEX } from "@/components/flowbuilder/types";
 import { api } from "@/lib/api";
 import Palette from "@/components/flowbuilder/Palette";
 import { toast } from "react-hot-toast";
 import type { ReactFlowInstance } from "reactflow";
+import { getNodeTitle, edgeStyleForType, portTypeForHandle, NODE_WIDTH, HEADER_HEIGHT, PORT_ROW_HEIGHT, HANDLE_SIZE } from "@/lib/flow-utils";
 import { useRouter } from "next/navigation";
 
 function genId(prefix = "id"): string {
@@ -80,7 +80,7 @@ function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: st
     type: "typed",
     position,
     data: { 
-      title: title ?? (kind === 'chainofthought' ? 'Chain Of Thought' : kind === 'predict' ? 'Predict' : kind === 'llm' ? 'LLM Provider' : kind), 
+      title: title ?? getNodeTitle(kind),
       kind, 
       inputs, 
       outputs,
@@ -107,13 +107,24 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
   const router = useRouter();
-  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number } | null>(null);
-  const [initialViewport, setInitialViewport] = useState<{ x: number; y: number; zoom: number } | null>(null);
+
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // When interacting with the canvas (dragging/panning/selection), disable text selection globally
+  const [canvasInteracting, setCanvasInteracting] = useState<boolean>(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const latestPayloadRef = useRef<any>(null);
+  // Cache of latest outputs by node id to avoid async state races during chained runs
+  const runtimeOutputsRef = useRef<Record<string, Record<string, any>>>({});
   const retryTimerRef = useRef<number | null>(null);
   const backoffRef = useRef<number>(1000); // start at 1s, max 30s
+  // History for undo/redo
+  const historyRef = useRef<{ nodes: Node<TypedNodeData>[], edges: Edge[] }[]>([]);
+  const historyIndexRef = useRef<number>(-1);
+  const isRestoringRef = useRef<boolean>(false);
+  const clipboardRef = useRef<{ nodes: Node<TypedNodeData>[]; edges: Edge[] } | null>(null);
 
   function clearRetry() {
     if (retryTimerRef.current) {
@@ -159,6 +170,12 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   } | null>(null);
 
   // State for drag-to-add-input functionality
+  type DragState = {
+    isDragging: boolean;
+    portType: PortType | null;
+    sourceNodeId: string | null;
+    handleId: string | null;
+  } | null;
   const [dragState, setDragState] = useState<DragState>(null);
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
@@ -179,7 +196,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     };
   }, [id]);
 
-  // Load saved graph state (nodes/edges/viewport)
+  // Load saved graph state (nodes/edges)
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -188,13 +205,9 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         if (cancelled) return;
         const sNodes = (state.data?.nodes ?? []) as Node<TypedNodeData>[];
         const sEdges = (state.data?.edges ?? []) as Edge[];
-        const v: any = state.data?.viewport;
         if (sNodes.length || sEdges.length) {
           setNodes(sNodes);
           setEdges(sEdges);
-        }
-        if (v && typeof v.x === 'number' && typeof v.y === 'number' && typeof v.zoom === 'number') {
-          setInitialViewport({ x: v.x, y: v.y, zoom: v.zoom });
         }
       } catch (e) {
         // ignore; use defaults
@@ -251,16 +264,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
                 target: targetNodeId,
                 targetHandle: `in-${newInputPort.id}`,
               };
-              
-      const edgeColor = (portType as PortType) === 'llm' ? "#64748b" : (PORT_HEX[portType as PortType] || "#64748b");
-      const edgeWidth = (portType as PortType) === 'llm' ? 2 : 3;
-      setEdges((eds) => addEdge({
-        ...newConnection,
-        style: {
-          stroke: edgeColor,
-          strokeWidth: edgeWidth,
-        },
-      }, eds));
+      setEdges((eds) => addEdge({ ...newConnection, style: edgeStyleForType(portType as PortType) }, eds));
             }
           }
           return currentNodes;
@@ -287,62 +291,38 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
 
 
-  function portTypeFor(nodeId?: string | null, handleId?: string | null): PortType | null {
-    if (!nodeId || !handleId) return null;
-    const n = nodes.find((x) => x.id === nodeId);
-    if (!n) return null;
-    const pid = handleId.replace(/^in-|^out-/, "");
-    const inp = n.data.inputs.find((p) => p.id === pid);
-    if (inp) return inp.type;
-    const outp = n.data.outputs.find((p) => p.id === pid);
-    return outp ? outp.type : null;
-  }
-
-  function portTypeForNode(node: Node<TypedNodeData>, handleId: string): PortType | null {
-    const pid = handleId.replace(/^in-|^out-/, "");
-    const inp = node.data.inputs.find((p) => p.id === pid);
-    if (inp) return inp.type;
-    const outp = node.data.outputs.find((p) => p.id === pid);
-    return outp ? outp.type : null;
-  }
+  // (moved to lib/flow-utils) portTypeForHandle
 
   const isValidConnection = useCallback(
     (c: Connection) => {
-      if (!c.source || !c.sourceHandle || !c.target || !c.targetHandle) return false;
-      // enforce direction out -> in
-      if (!c.sourceHandle.startsWith("out-") || !c.targetHandle.startsWith("in-")) return false;
-      if (c.source === c.target) return false; // disallow self
-      const t1 = portTypeFor(c.source, c.sourceHandle);
-      const t2 = portTypeFor(c.target, c.targetHandle);
-      return !!t1 && t1 === t2;
+      // Allow preview for reverse drags; finalize onConnect
+      if (!c.source || !c.sourceHandle || !c.target || !c.targetHandle) return true;
+      if (c.source === c.target) return false;
+      const srcNode = nodes.find((n) => n.id === c.source);
+      const tgtNode = nodes.find((n) => n.id === c.target);
+      const t1 = portTypeForHandle(srcNode as any, c.sourceHandle);
+      const t2 = portTypeForHandle(tgtNode as any, c.targetHandle);
+      if (!t1 || !t2) return true;
+      return t1 === t2;
     },
     [nodes]
   );
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (!isValidConnection(connection)) return;
-      
-      // Get the port type to style the edge
-      const portType = portTypeFor(connection.source, connection.sourceHandle);
-      const edgeColor = portType === 'llm' ? "#64748b" : (portType ? PORT_HEX[portType] : "#64748b");
-      const edgeWidth = portType === 'llm' ? 2 : 3;
-      
-      setEdges((eds) => addEdge({ 
-        ...connection,
-        style: { 
-          stroke: edgeColor,
-          strokeWidth: edgeWidth,
-        },
-      }, eds));
+      if (!connection.source) return;
+      const src = nodes.find((n) => n.id === connection.source);
+      const pt = portTypeForHandle(src as any, connection.sourceHandle);
+      setEdges((eds) => addEdge({ ...connection, style: edgeStyleForType(pt || undefined) }, eds));
     },
-    [isValidConnection, setEdges, nodes]
+    [setEdges, nodes]
   );
 
   const onConnectStart: OnConnectStart = useCallback((_, { nodeId, handleId, handleType }) => {
     if (!nodeId || !handleId || !handleType) return;
     
-    const portType = portTypeFor(nodeId, handleId);
+    const src = nodes.find((n) => n.id === nodeId);
+    const portType = portTypeForHandle(src as any, handleId);
     if (!portType) return;
     
     // Store connection info for potential drag-to-create
@@ -414,19 +394,28 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     }
   }, [rfInstance, pendingConnection]);
 
-  // Keep derived llmConnected flag on nodes in sync with edges
+  // Keep derived connectivity flags on nodes in sync with edges
   useEffect(() => {
     setNodes((curr) => {
       let changed = false;
       const next = curr.map((n) => {
-        if (n.data.kind === 'predict' || n.data.kind === 'chainofthought') {
-          const modelPort = n.data.inputs.find((p) => p.type === 'llm' && p.name === 'model');
-          if (!modelPort) return n;
-          const wired = edges.some((e) => e.target === n.id && e.targetHandle === `in-${modelPort.id}`);
-          if ((n.data as any).llmConnected !== wired) {
-            changed = true;
-            return { ...n, data: { ...n.data, llmConnected: wired } };
-          }
+        const inputsById: Record<string, boolean> = {};
+        const inputsByName: Record<string, boolean> = {};
+        for (const p of n.data.inputs || []) {
+          const wired = edges.some((e) => e.target === n.id && e.targetHandle === `in-${p.id}`);
+          inputsById[p.id] = wired;
+          inputsByName[p.name] = wired;
+        }
+        const llmPort = n.data.inputs.find((p) => p.type === 'llm' && p.name === 'model');
+        const llmWired = !!(llmPort && inputsById[llmPort.id]);
+        const prev = n.data.connected?.inputsById || {};
+        const prevName = n.data.connected?.inputsByName || {};
+        const eqIds = Object.keys(inputsById).length === Object.keys(prev).length && Object.keys(inputsById).every(k => prev[k] === inputsById[k]);
+        const eqNames = Object.keys(inputsByName).length === Object.keys(prevName).length && Object.keys(inputsByName).every(k => prevName[k] === inputsByName[k]);
+        const llmChanged = (n.data as any).llmConnected !== llmWired;
+        if (!eqIds || !eqNames || llmChanged) {
+          changed = true;
+          return { ...n, data: { ...n.data, llmConnected: llmWired, connected: { inputsById, inputsByName } } };
         }
         return n;
       });
@@ -439,11 +428,19 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     function onUpdateNodeData(ev: any) {
       const { nodeId, patch } = ev.detail || {};
       if (!nodeId || !patch) return;
+      const prev = nodes.find(n => n.id === nodeId);
+      if (prev) {
+        const nextData = { ...prev.data, ...patch } as TypedNodeData;
+        const changed = hasNodeConfigChange(prev.data, nextData);
+        if (changed && prev.data.runtime?.status === 'done') {
+          clearDownstream(nodeId, true);
+        }
+      }
       setNodes((curr) => curr.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n)));
     }
     window.addEventListener('update-node-data', onUpdateNodeData as any);
     return () => window.removeEventListener('update-node-data', onUpdateNodeData as any);
-  }, [setNodes]);
+  }, [setNodes, nodes]);
 
   // Resolve values for a node's inputs
   function resolveInputsFor(node: Node<TypedNodeData>): { values: Record<string, any>; model?: string; error?: string } {
@@ -474,7 +471,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         if (srcNode.data.kind === 'input') {
           v = srcNode.data.values?.[srcName];
         } else {
-          v = srcNode.data.runtime?.outputs?.[srcName];
+          const cached = runtimeOutputsRef.current[srcNode.id]?.[srcName];
+          v = cached !== undefined ? cached : srcNode.data.runtime?.outputs?.[srcName];
         }
         if (v === undefined || v === null) return { values, model, error: `Upstream value for ${p.name} not available` };
         values[p.name] = v;
@@ -522,7 +520,12 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         toast.error(res.error);
         return;
       }
+      // Cache outputs immediately to be available for following runs in this tick
+      runtimeOutputsRef.current[nodeId] = res.outputs || {};
+      // Set this node as done with fresh outputs
       setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { status: 'done', outputs: res.outputs } } } : n));
+      // Clear eligible downstream nodes since upstream has new outputs
+      clearDownstream(nodeId, false);
     } catch (e: any) {
       const msg = e?.message || 'Run failed';
       setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { status: 'error', error: msg } } } : n));
@@ -530,10 +533,133 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  function getOutgoing(nodeId: string) {
+    return edges.filter(e => e.source === nodeId);
+  }
+
+  function isComputeNodeKind(kind: NodeKind) {
+    return kind === 'predict' || kind === 'chainofthought';
+  }
+
+  function collectDownstream(nodeId: string): Set<string> {
+    const visited = new Set<string>();
+    const queue: string[] = [];
+    getOutgoing(nodeId).forEach(e => queue.push(e.target));
+    while (queue.length) {
+      const nid = queue.shift()!;
+      if (visited.has(nid)) continue;
+      visited.add(nid);
+      getOutgoing(nid).forEach(e => queue.push(e.target));
+    }
+    return visited;
+  }
+
+  function clearDownstream(nodeId: string, includeCurrent: boolean) {
+    const affected = collectDownstream(nodeId);
+    if (includeCurrent) affected.add(nodeId);
+    setNodes(curr => curr.map(n => {
+      if (!affected.has(n.id)) return n;
+      // Only clear compute nodes; output nodes are derived previews
+      if (!isComputeNodeKind(n.data.kind)) return n;
+      const st = n.data.runtime?.status;
+      if (st === 'done' || st === 'error' || st === 'running' || n.data.runtime) {
+        return { ...n, data: { ...n.data, runtime: undefined } };
+      }
+      return n;
+    }));
+    // Clear cached outputs for affected compute nodes
+    affected.forEach(nid => {
+      delete runtimeOutputsRef.current[nid];
+    });
+  }
+
+  async function runWithDeps(nodeId: string, executed: Set<string>, force: boolean = false) {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    // First, ensure all upstream dependencies are run
+    for (const p of node.data.inputs) {
+      if (p.type === 'llm' && p.name === 'model') continue;
+      const edge = edges.find(e => e.target === node.id && e.targetHandle === `in-${p.id}`);
+      if (!edge) continue; // manual or missing
+      const src = nodes.find(n => n.id === edge.source);
+      if (!src) continue;
+      await runWithDeps(src.id, executed, force);
+    }
+    // Then, run this node if it's a compute node and not already executed in this batch
+    if (isComputeNodeKind(node.data.kind) && !executed.has(node.id)) {
+      const st = node.data.runtime?.status;
+      if (!force && st === 'done') {
+        return; // already fresh, skip
+      }
+      executed.add(node.id);
+      await runNode(node.id);
+    }
+  }
+
+  async function runToNode(nodeId: string) {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    const executed = new Set<string>();
+    // Run prerequisites normally (reuse cache), then force-run the clicked node
+    await runWithDeps(nodeId, executed, false);
+    if (isComputeNodeKind(node.data.kind)) {
+      await runNode(nodeId);
+    }
+  }
+
+  async function runAll() {
+    // Reset compute nodes' runtime to show a fresh pass
+    setNodes(curr => curr.map(n => {
+      if (isComputeNodeKind(n.data.kind)) {
+        return { ...n, data: { ...n.data, runtime: undefined } };
+      }
+      return n;
+    }));
+    // Clear all cached outputs
+    runtimeOutputsRef.current = {};
+
+    // Allow React to apply the clear before starting execution
+    await new Promise<void>((resolve) => {
+      // next microtask + paint
+      setTimeout(() => resolve(), 0);
+    });
+
+    // Execute all compute nodes reachable in the graph, ensuring prerequisites run first (force fresh)
+    const executed = new Set<string>();
+    const outputs = nodes.filter(n => n.data.kind === 'output');
+    if (outputs.length > 0) {
+      for (const out of outputs) {
+        await runWithDeps(out.id, executed, true);
+      }
+    } else {
+      // No explicit outputs; run all compute nodes
+      const computes = nodes.filter(n => isComputeNodeKind(n.data.kind));
+      for (const c of computes) {
+        await runWithDeps(c.id, executed, true);
+      }
+    }
+  }
+
   const onSelectionChange = useCallback(({ nodes: n, edges: e }: { nodes: Node[], edges: Edge[] }) => {
     setSelectedNodeId(n[0]?.id ?? null);
     setSelectedEdgeId(e[0]?.id ?? null);
   }, []);
+
+  function hasNodeConfigChange(prev: TypedNodeData, next: TypedNodeData) {
+    if (prev.title !== next.title) return true;
+    if ((prev.description || '') !== (next.description || '')) return true;
+    const a = prev.inputs || [];
+    const b = next.inputs || [];
+    if (a.length !== b.length) return true;
+    for (let i = 0; i < a.length; i++) {
+      const pa = a[i];
+      const pb = b[i];
+      if (pa.name !== pb.name) return true;
+      if (pa.type !== pb.type) return true;
+      if ((pa.description || '') !== (pb.description || '')) return true;
+    }
+    return false;
+  }
 
   function updateSelectedNode(data: TypedNodeData) {
     if (!selectedNodeId) return;
@@ -548,7 +674,13 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         };
       }
     }
-    
+
+    const prev = nodes.find(n => n.id === selectedNodeId);
+    const changed = prev ? hasNodeConfigChange(prev.data, data) : false;
+    if (changed && prev && prev.data.runtime?.status === 'done') {
+      // Clear current compute node and downstream
+      clearDownstream(selectedNodeId, true);
+    }
     setNodes((ns) => ns.map((n) => (n.id === selectedNodeId ? { ...n, data } : n)));
   }
 
@@ -569,8 +701,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
   // Palette and quick add
   function addNodeAtCenter(kind: NodeKind) {
-    const labelForKind = (k: NodeKind) =>
-      k === 'chainofthought' ? 'Chain Of Thought' : k === 'predict' ? 'Predict' : k === 'input' ? 'Input' : k === 'llm' ? 'LLM Provider' : 'Output';
+    const labelForKind = (k: NodeKind) => getNodeTitle(k);
     // Prefer placing at cursor if available, otherwise center
     let pos = undefined as { x: number; y: number } | undefined;
     if (lastMousePos && rfInstance) {
@@ -601,8 +732,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     
     // Create node with appropriate input type if connecting from a source
     const requiredType = connection.handleType === 'source' ? connection.portType : undefined;
-    const labelForKind = (k: NodeKind) =>
-      k === 'chainofthought' ? 'Chain Of Thought' : k === 'predict' ? 'Predict' : k === 'input' ? 'Input' : 'Output';
+    const labelForKind = (k: NodeKind) => getNodeTitle(k);
     const node = makeNode(kind, offsetPosition, labelForKind(kind), requiredType);
     
     // Add the node first
@@ -642,30 +772,12 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         const sourceNode = currentNodes.find(n => n.id === newConnection.source);
         const targetNode = currentNodes.find(n => n.id === newConnection.target);
         
-        if (sourceNode && targetNode && 
-            newConnection.sourceHandle?.startsWith("out-") && 
-            newConnection.targetHandle?.startsWith("in-") &&
-            newConnection.source !== newConnection.target) {
-          
-          const sourcePortType = portTypeForNode(sourceNode, newConnection.sourceHandle);
-          const targetPortType = portTypeForNode(targetNode, newConnection.targetHandle);
-          
+        if (sourceNode && targetNode && newConnection.source !== newConnection.target) {
+          const sourcePortType = portTypeForHandle(sourceNode as any, newConnection.sourceHandle);
+          const targetPortType = portTypeForHandle(targetNode as any, newConnection.targetHandle);
           if (sourcePortType && targetPortType && sourcePortType === targetPortType) {
-            const portType = connection.portType;
-            const edgeColor = PORT_HEX[portType] || "#64748b";
-            
-            // Use a small timeout to avoid React state update conflicts
             setTimeout(() => {
-              setEdges((eds) => {
-                const newEdge = { 
-                  ...newConnection,
-                  style: { 
-                    stroke: edgeColor,
-                    strokeWidth: 3,
-                  },
-                };
-                return addEdge(newEdge, eds);
-              });
+              setEdges((eds) => addEdge({ ...newConnection, style: edgeStyleForType(connection.portType) }, eds));
             }, 10);
           }
         }
@@ -680,11 +792,11 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     portType: PortType;
   }, kind: NodeKind): { x: number; y: number } {
     // Node dimensions from TypedNode.tsx
-    const nodeWidth = 240;
-    const headerHeight = 41;
-    const contentPaddingTop = 12;
-    const portSpacing = 32;
-    const handleSize = 14;
+    const nodeWidth = NODE_WIDTH;
+    const headerHeight = HEADER_HEIGHT;
+    const contentPaddingTop = 12; // p-3 top
+    const portSpacing = PORT_ROW_HEIGHT;
+    const handleSize = HANDLE_SIZE;
     
     // Calculate handle position relative to node
     const portIndex = 0; // We'll connect to the first compatible port
@@ -740,8 +852,10 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     setEdges((eds) =>
       eds.map((e) => {
-        const t1 = portTypeFor(e.source, e.sourceHandle);
-        const t2 = portTypeFor(e.target, e.targetHandle);
+        const n1 = nodes.find((n) => n.id === e.source);
+        const n2 = nodes.find((n) => n.id === e.target);
+        const t1 = portTypeForHandle(n1 as any, e.sourceHandle);
+        const t2 = portTypeForHandle(n2 as any, e.targetHandle);
         const incompatible = !!t1 && !!t2 && t1 !== t2;
         const stroke = incompatible ? "#ef4444" /* red-500 */ : undefined;
         const style = stroke ? { ...(e.style || {}), stroke } : { ...(e.style || {}) };
@@ -791,27 +905,19 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     );
   }, [selectedEdgeId, setEdges]);
 
-  // Apply initial viewport when instance ready
-  useEffect(() => {
-    if (rfInstance && initialViewport) {
-      try {
-        (rfInstance as any).setViewport?.(initialViewport);
-      } catch {}
-    }
-  }, [rfInstance, initialViewport]);
 
-  // Auto-save graph state when nodes/edges/viewport change (debounced)
+  // Auto-save graph state when nodes/edges change (debounced)
   useEffect(() => {
     if (!loadedFromServer) return; // avoid saving before initial load
     const handle = setTimeout(() => {
-      const payload = { nodes, edges, viewport: viewport ?? ((rfInstance as any)?.getViewport?.() || undefined) } as any;
+      const payload = { nodes, edges } as any;
       latestPayloadRef.current = payload;
       clearRetry();
       backoffRef.current = 1000; // reset backoff on new change
       attemptSave(payload);
     }, 500);
     return () => clearTimeout(handle);
-  }, [id, nodes, edges, viewport, rfInstance, loadedFromServer]);
+  }, [id, nodes, edges, rfInstance, loadedFromServer]);
 
   // Turn saved -> idle after a short delay
   useEffect(() => {
@@ -833,16 +939,119 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, [saveStatus]);
 
+  // Push history snapshot when nodes/edges change
+  useEffect(() => {
+    if (isRestoringRef.current) return;
+    const snapshot = { nodes, edges };
+    const prev = historyRef.current[historyIndexRef.current];
+    const same = prev && JSON.stringify(prev) === JSON.stringify(snapshot);
+    if (same) return;
+    // Truncate forward history if any
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+    }
+    historyRef.current.push(snapshot);
+    historyIndexRef.current++;
+  }, [nodes, edges]);
+
+  function undo() {
+    if (historyIndexRef.current <= 0) return;
+    isRestoringRef.current = true;
+    historyIndexRef.current--;
+    const snap = historyRef.current[historyIndexRef.current];
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    setTimeout(() => { isRestoringRef.current = false; }, 0);
+  }
+
+  function redo() {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    isRestoringRef.current = true;
+    historyIndexRef.current++;
+    const snap = historyRef.current[historyIndexRef.current];
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    setTimeout(() => { isRestoringRef.current = false; }, 0);
+  }
+
+  // Copy/paste handlers
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+      if (e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      } else if (e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      } else if (e.key.toLowerCase() === 'c') {
+        // Copy
+        if (selectedNodeIds.length === 0) return;
+        const selNodes = nodes.filter(n => selectedNodeIds.includes(n.id));
+        const selEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target));
+        clipboardRef.current = { nodes: selNodes.map(n => ({ ...n })), edges: selEdges.map(e => ({ ...e })) };
+      } else if (e.key.toLowerCase() === 'v') {
+        // Paste
+        if (!clipboardRef.current) return;
+        e.preventDefault();
+        const oldToNew: Record<string, string> = {};
+        const offset = { x: 40, y: 40 };
+        const newNodes = clipboardRef.current.nodes.map(n => {
+          const newId = genId('n');
+          oldToNew[n.id] = newId;
+          return { ...n, id: newId, position: { x: n.position.x + offset.x, y: n.position.y + offset.y }, selected: true } as Node<TypedNodeData>;
+        });
+        const newEdges = clipboardRef.current.edges.map(e => ({
+          ...e,
+          id: genId('e'),
+          source: oldToNew[e.source] || e.source,
+          target: oldToNew[e.target] || e.target,
+        }));
+        // Deselect all existing nodes, then add new nodes as selected
+        setNodes(ns => [...ns.map(n => ({ ...n, selected: false })), ...newNodes]);
+        // Deselect all existing edges (don't auto-select new edges)
+        setEdges(es => [...es.map(ed => ({ ...ed, selected: false })), ...newEdges]);
+        setSelectedNodeIds(newNodes.map(n => n.id));
+        setSelectedNodeId(newNodes[0]?.id ?? null);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [nodes, edges, selectedNodeIds]);
+
+  // Enable select-none when starting a shift-drag inside the canvas to avoid browser text selection
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (!e.shiftKey || e.button !== 0) return;
+      const target = e.target as Element | null;
+      if (!target) return;
+      // Only engage when starting inside the React Flow pane
+      if (target.closest('.react-flow')) {
+        setCanvasInteracting(true);
+      }
+    }
+    function onMouseUp() {
+      if (canvasInteracting) setCanvasInteracting(false);
+    }
+    window.addEventListener('mousedown', onMouseDown, { capture: true });
+    window.addEventListener('mouseup', onMouseUp, { capture: true });
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown, { capture: true } as any);
+      window.removeEventListener('mouseup', onMouseUp, { capture: true } as any);
+    };
+  }, [canvasInteracting]);
+
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background">
+    <div ref={containerRef} className={`h-screen w-screen overflow-hidden bg-background ${canvasInteracting ? 'select-none' : ''}`}>
       <Topbar title={flowTitle} status={saveStatus} onBack={() => {
         if (saveStatus === 'saving') {
           const ok = confirm('A save is in progress. Are you sure you want to leave?');
           if (!ok) return;
         }
         router.push('/');
-      }} />
-      <div className="absolute inset-0 top-12">
+      }} onRunAll={runAll} flowId={id} onUndo={undo} onRedo={redo} canUndo={historyIndexRef.current > 0} canRedo={historyIndexRef.current < historyRef.current.length - 1} />
+      <div className="absolute inset-0 top-14 flow-builder">
         <ReactFlow
           nodeTypes={nodeTypes}
           nodes={nodes}
@@ -854,10 +1063,29 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           onConnectEnd={onConnectEnd}
           isValidConnection={isValidConnection}
           onSelectionChange={onSelectionChange}
+          onNodeClick={(e, node) => {
+            if (e.shiftKey) {
+              e.preventDefault();
+              e.stopPropagation();
+              setNodes(curr => curr.map(n => n.id === node.id ? { ...n, selected: !n.selected } : n));
+              setSelectedNodeIds(prev => {
+                const has = prev.includes(node.id);
+                const next = has ? prev.filter(id => id !== node.id) : [...prev, node.id];
+                if (!has && !selectedNodeId) setSelectedNodeId(node.id);
+                return next;
+              });
+            }
+          }}
           onInit={(inst) => setRfInstance(inst)}
-          onMoveEnd={(_, vp) => setViewport(vp)}
+          onMoveStart={() => setCanvasInteracting(true)}
+          onMoveEnd={() => setCanvasInteracting(false)}
+          onPaneClick={() => setCanvasInteracting(false)}
+          onPaneContextMenu={() => setCanvasInteracting(false)}
+          onPaneScroll={() => setCanvasInteracting(false)}
           connectionLineComponent={CustomConnectionLine}
           elementsSelectable={true}
+          selectionOnDrag={true}
+          selectNodesOnDrag={true}
           fitView
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
@@ -866,7 +1094,30 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         </ReactFlow>
       </div>
 
-      <NodeInspector node={selectedNode ?? null} onChange={updateSelectedNode} onAddPort={addPort} onRemovePort={removePort} onRunNode={runNode} flowId={id} />
+      <NodeInspector node={selectedNode ?? null} onChange={updateSelectedNode} onAddPort={addPort} onRemovePort={removePort} onRunNode={runToNode} flowId={id} finalOutputs={(() => {
+        if (!selectedNode || selectedNode.data.kind !== 'output') return [];
+        const res: { name: string; value: any }[] = [];
+        for (const p of selectedNode.data.inputs) {
+          const e = edges.find(ed => ed.target === selectedNode.id && ed.targetHandle === `in-${p.id}`);
+          if (!e) {
+            res.push({ name: p.name, value: undefined });
+            continue;
+          }
+          const src = nodes.find(n => n.id === e.source);
+          if (!src) {
+            res.push({ name: p.name, value: undefined });
+            continue;
+          }
+          const srcPortId = (e.sourceHandle || '').replace('out-', '');
+          const sp = src.data.outputs.find(op => op.id === srcPortId);
+          const srcName = sp?.name || '';
+          let v: any = undefined;
+          if (src.data.kind === 'input') v = src.data.values?.[srcName];
+          else v = src.data.runtime?.outputs?.[srcName];
+          res.push({ name: p.name, value: v });
+        }
+        return res;
+      })()} />
       <Palette 
         open={paletteOpen} 
         onClose={() => {

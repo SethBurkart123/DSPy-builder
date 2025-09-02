@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from typing import Any
-
+import dspy
 
 def _py_type(t: str, array_item_type: str | None = None):
     t = t.lower()
@@ -36,10 +36,6 @@ def _py_type(t: str, array_item_type: str | None = None):
 
 
 def build_signature(signature_name: str, description: str | None, inputs_schema: list[dict], outputs_schema: list[dict]):
-    try:
-        import dspy  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError(f"DSPy import failed: {e}")
 
     annotations: dict[str, Any] = {}
     attrs: dict[str, Any] = {}
@@ -74,11 +70,6 @@ def run(payload: dict) -> dict:
     inputs_values = payload.get("inputs_values") or {}
     model = payload.get("model")
     lm_params = payload.get("lm_params") or {}
-
-    try:
-        import dspy  # type: ignore
-    except Exception as e:  # pragma: no cover
-        return {"error": f"DSPy not available: {e}"}
 
     try:
         Sig = build_signature(title.replace(" ", "_"), desc, inputs_schema, outputs_schema)

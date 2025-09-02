@@ -50,6 +50,11 @@ export type TypedNodeData = {
   };
   // Derived: whether the 'model' llm input is connected
   llmConnected?: boolean;
+  // Derived: connectivity maps for general binding use-cases
+  connected?: {
+    inputsById?: Record<string, boolean>;
+    inputsByName?: Record<string, boolean>;
+  };
   // Optional ad-hoc values for ports (e.g., input node outputs or manual inputs when running in isolation)
   values?: Record<string, any>;
   // Runtime state for UI

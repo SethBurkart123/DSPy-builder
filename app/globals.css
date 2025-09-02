@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
@@ -119,4 +119,10 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Flow builder UX tweaks */
+/* Hide React Flow multi-node bounding box (we already outline nodes) */
+.flow-builder .react-flow__nodesselection {
+  display: none !important;
 }
