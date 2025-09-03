@@ -4,9 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Handle, Position } from "reactflow";
 import type { TypedNodeData, PortType } from "@/components/flowbuilder/types";
 import { Lock } from "lucide-react";
-import { handleStyleForPort, HANDLE_SIZE, NODE_GRID_PADDING_X } from "@/lib/flow-utils";
-
-// Handle styles now centralized in flow-utils
+import { handleStyleForPort, HANDLE_SIZE, NODE_GRID_PADDING_X, genId } from "@/lib/flow-utils";
 
 type DragState = {
   isDragging: boolean;
@@ -22,9 +20,7 @@ export function PortListSection({
   autogrow,
   accepts,
   portSpacing = 32,
-  headerHeight = 41,
-  contentPaddingTop = 12,
-  modelRowHeight = 0,
+  isDragHovering = false,
 }: {
   nodeId: string;
   data: TypedNodeData;
@@ -32,15 +28,16 @@ export function PortListSection({
   autogrow?: boolean;
   accepts?: PortType[];
   portSpacing?: number;
-  headerHeight?: number;
-  contentPaddingTop?: number;
-  modelRowHeight?: number;
+  isDragHovering?: boolean;
 }) {
-  const [isDragHovering, setIsDragHovering] = useState(false);
   const [dragState, setDragState] = useState<DragState>(null);
+  
+  // Generate a stable dropzone ID per node that persists until used
+  const [dropzoneId, setDropzoneId] = useState(() => genId('p'));
 
   useEffect(() => {
     function handleDragStateChange(event: any) {
+      console.log("state change")
       setDragState(event.detail);
     }
     window.addEventListener("drag-state-change", handleDragStateChange);
@@ -62,17 +59,25 @@ export function PortListSection({
   }, [autogrow, data.kind, dragState, isDragHovering, nodeId, role, accepts]);
 
   const handleDropZoneClick = useCallback(() => {
+    console.log("HI")
     if (dragState?.isDragging && dragState.portType && dragState.sourceNodeId && dragState.handleId) {
+      // remove the current 
+
+
       const eventDetail = {
         targetNodeId: nodeId,
         portType: dragState.portType,
         sourceNodeId: dragState.sourceNodeId,
         sourceHandleId: dragState.handleId,
+        dropzoneId: dropzoneId,
       };
       const event = new CustomEvent("add-input-port", { detail: eventDetail });
+      console.log('dispatched event!')
       window.dispatchEvent(event);
+
+      setDropzoneId(genId("p"));
     }
-  }, [nodeId, dragState]);
+  }, [nodeId, dragState, dropzoneId]);
 
   function formatValue(v: any): string {
     try {
@@ -84,14 +89,10 @@ export function PortListSection({
   }
 
   return (
-    <div
-      className={role === "inputs" ? "flex flex-col justify-start min-w-0" : "text-right flex flex-col justify-start min-w-0"}
-      onMouseEnter={() => setIsDragHovering(true)}
-      onMouseLeave={() => setIsDragHovering(false)}
-    >
+    <div className={role === "inputs" ? "flex flex-col justify-start min-w-0 relative" : "text-right flex flex-col justify-start min-w-0 relative"}>
       <div>
         {role === "inputs"
-          ? ports.map((p, index) => (
+          ? ports.map((p) => (
               <div key={p.id} className="flex items-center relative" style={{ height: `${portSpacing}px` }}>
                 {/* Input handle on left, aligned to row center */}
                 <Handle
@@ -120,7 +121,7 @@ export function PortListSection({
                 </div>
               </div>
             ))
-          : ports.map((p, index) => (
+          : ports.map((p) => (
               <div key={p.id} className="flex items-center justify-end gap-2 relative" style={{ height: `${portSpacing}px` }}>
                 {/* Output handle on right, aligned to row center */}
                 <Handle
@@ -170,16 +171,16 @@ export function PortListSection({
             ))}
 
         {showDropZone && dragState?.portType && role === "inputs" && (
-          <div className="flex items-center text-[10px] w-full relative" style={{ height: `${portSpacing}px` }} onMouseUp={handleDropZoneClick}>
+          <div className="flex items-center text-[10px] w-full relative" style={{ height: `${portSpacing}px` }}>
             <Handle
+              id={`in-${dropzoneId}`}
               type="target"
               position={Position.Left}
-              className={`border !border-border absolute -ml-3`}
+              onMouseUp={() => handleDropZoneClick()}
+              className={`border !border-border absolute`}
               style={{
                 ...handleStyleForPort(dragState.portType),
                 left: -(HANDLE_SIZE / 2) - NODE_GRID_PADDING_X,
-                top: "50%",
-                transform: "translateY(-50%)",
               }}
             />
             <span className="italic opacity-80">{dragState.portType}</span>

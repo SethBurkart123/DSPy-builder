@@ -19,6 +19,10 @@ export function getNodeTitle(kind: NodeKind): string {
   }
 }
 
+export function genId(prefix = "id"): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
 export function edgeStyleForType(portType?: PortType): { stroke: string; strokeWidth: number } {
   if (!portType) return { stroke: "#64748b", strokeWidth: 3 };
   if (portType === "llm") return { stroke: "#64748b", strokeWidth: 2 };

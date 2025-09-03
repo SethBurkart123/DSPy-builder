@@ -26,12 +26,8 @@ import { api } from "@/lib/api";
 import Palette from "@/components/flowbuilder/Palette";
 import { toast } from "react-hot-toast";
 import type { ReactFlowInstance } from "reactflow";
-import { getNodeTitle, edgeStyleForType, portTypeForHandle, NODE_WIDTH, HEADER_HEIGHT, PORT_ROW_HEIGHT, HANDLE_SIZE } from "@/lib/flow-utils";
+import { getNodeTitle, edgeStyleForType, portTypeForHandle, NODE_WIDTH, HEADER_HEIGHT, PORT_ROW_HEIGHT, HANDLE_SIZE, genId } from "@/lib/flow-utils";
 import { useRouter } from "next/navigation";
-
-function genId(prefix = "id"): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
-}
 
 const nodeTypes = { typed: TypedNode } as const;
 
@@ -224,20 +220,22 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   // Listen for add-input-port events from nodes
   useEffect(() => {
     function handleAddInputPort(event: any) {
-      const { targetNodeId, portType, sourceNodeId, sourceHandleId } = event.detail;
-      
-      // Find the target node and add a new input port
+      const { targetNodeId, portType, sourceNodeId, sourceHandleId, dropzoneId } = event.detail;
+      console.log("Nodes: ", nodes)
+      // Find the target node and add a new input port using the dropzone ID
       setNodes((currentNodes) => {
         return currentNodes.map(node => {
           if (node.id === targetNodeId) {
             // Do not allow adding inputs to the global input node
             if (node.data.kind === 'input') return node;
             const newPort: Port = {
-              id: genId("p"),
+              id: `in-${dropzoneId}`,
               name: `input-${(node.data.inputs?.length ?? 0) + 1}`,
               type: portType,
               description: "",
             };
+
+            console.log(newPort)
             
             return {
               ...node,
@@ -273,7 +271,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       
       // Clear the drag state
       setDragState(null);
-      window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
+      window.dispatchEvent(new CustomEvent('update-node-internals', { detail: { id: targetNodeId } }));
     }
     
     window.addEventListener('add-input-port', handleAddInputPort);
@@ -1063,6 +1061,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           onConnectEnd={onConnectEnd}
           isValidConnection={isValidConnection}
           onSelectionChange={onSelectionChange}
+          proOptions={{ hideAttribution: true }}
           onNodeClick={(e, node) => {
             if (e.shiftKey) {
               e.preventDefault();
