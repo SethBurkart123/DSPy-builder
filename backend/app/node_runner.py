@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import sys
 from typing import Any
-import ast
 import dspy
 from .dspy_signature import build_signature
+from .runner_core import get_lm, parse_tools, build_module, collect_outputs
 
  
 
@@ -23,60 +23,19 @@ def run(payload: dict) -> dict:
 
     try:
         Sig = build_signature(title.replace(" ", "_"), desc, inputs_schema, outputs_schema)
-        # configure LM
-        if model:
-            lm = dspy.LM(model=model, **lm_params)
-        else:
-            lm = dspy.LM()
+        lm = get_lm(model, lm_params)
         dspy.settings.configure(lm=lm)
 
-        if kind == "chainofthought":
-            module = dspy.ChainOfThought(Sig)
-        elif kind == "agent":
-            # Build tools by executing provided code strings and collecting callables
-            tool_funcs = []
-            errors: list[str] = []
-            for idx, code in enumerate(tools_code):
-                # Basic structure validation via AST
-                try:
-                    tree = ast.parse(code)
-                except Exception as e:
-                    errors.append(f"Tool #{idx+1} parse error: {e}")
-                    continue
-                has_func = any(isinstance(n, ast.FunctionDef) for n in tree.body)
-                if not has_func:
-                    errors.append(f"Tool #{idx+1} must define at least one function (def ...)")
-                    continue
-                try:
-                    ns: dict[str, Any] = {"dspy": dspy}
-                    exec(compile(tree, filename=f"<tool_{idx+1}>", mode="exec"), ns, ns)
-                    fns = [v for k, v in ns.items() if callable(v) and not k.startswith("__")]
-                    if not fns:
-                        errors.append(f"Tool #{idx+1} did not define any callable functions")
-                        continue
-                    tool_funcs.append(fns[-1])
-                except Exception as e:
-                    errors.append(f"Tool #{idx+1} execution error: {e}")
-                    continue
+        tools: list[Any] | None = None
+        if kind == "agent":
+            tools, errors = parse_tools(tools_code or [])
             if errors:
                 return {"error": "; ".join(errors)}
-            if not tool_funcs:
-                return {"error": "Agent requires at least one valid tool"}
-            module = dspy.ReAct(Sig, tools=tool_funcs)
-        else:
-            module = dspy.Predict(Sig)
 
+        module = build_module(kind, Sig, tools=tools)
         pred = module(**inputs_values)
 
-        outputs: dict[str, Any] = {}
-        for f in outputs_schema:
-            name = f.get("name")
-            try:
-                outputs[name] = getattr(pred, name)
-            except Exception:
-                outputs[name] = None
-
-        # try to capture reasoning if present
+        outputs = collect_outputs(pred, outputs_schema)
         reasoning = getattr(pred, "reasoning", None)
         return {"outputs": outputs, "reasoning": reasoning}
     except Exception as e:

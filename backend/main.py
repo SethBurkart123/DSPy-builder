@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routes.flows import router as flows_router
 from routes.keys import router as keys_router
+from app.db import init_db
 
 # Load .env files (root/.env.local, root/.env)
 try:
@@ -31,6 +32,15 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+def _startup_init_db():
+    try:
+        init_db()
+    except Exception:
+        # Avoid hard-failing on startup in dev if FS is read-only, etc.
+        pass
 
 
 app.include_router(flows_router, prefix="/api/flows", tags=["flows"])

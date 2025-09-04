@@ -1,4 +1,3 @@
-import os
 import sqlite3
 from pathlib import Path
 from typing import Iterable
@@ -11,6 +10,11 @@ def get_connection() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # Ensure FK constraints are enforced for this connection
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+    except Exception:
+        pass
     return conn
 
 
@@ -50,18 +54,6 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(flow_id) REFERENCES flows(id) ON DELETE CASCADE
-            )
-            """
-        )
-        conn.commit()
-        # API keys store
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS api_keys (
-                provider TEXT PRIMARY KEY,
-                api_key TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
             )
             """
         )

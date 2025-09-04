@@ -121,7 +121,7 @@ export function useFlowSchemas(flowId: string) {
 
     const fields = schema.fields.map(field => {
       const dspyType = getDSPyType(field);
-      const description = field.description || `${field.name} field`;
+      const description = field.description;
       
       // Determine if this should be an InputField or OutputField based on common naming patterns
       // Fields ending with "output", "result", "answer", "response" are typically outputs
@@ -131,7 +131,7 @@ export function useFlowSchemas(flowId: string) {
       const fieldType = isLikelyOutput ? "OutputField" : "InputField";
       
       // Generate field with proper DSPy syntax
-      let fieldDeclaration = `${field.name}: ${dspyType} = dspy.${fieldType}(desc="${description}"`;
+      let fieldDeclaration = `${field.name}: ${dspyType} = dspy.${fieldType}(${description ? `desc="${description}"` : ""}`;
       
       // Add optional parameter for non-required fields (only for InputFields)
       if (!field.required && !isLikelyOutput) {
@@ -169,10 +169,7 @@ export function useFlowSchemas(flowId: string) {
 
     const classDefinition = `class ${schema.name}(dspy.Signature):${schema.description ? `\n    \"\"\"${schema.description}\"\"\"` : ""}${fields.length > 0 ? `\n${fields.join('\n')}` : '\n    pass'}`;
 
-    // Add helpful comment about field types
-    const helpComment = `# DSPy Signature: Fields ending with 'output', 'result', 'answer', etc. are treated as OutputFields\n# All other fields are treated as InputFields. Modify field types as needed for your use case.`;
-
-    return `${imports.join('\n')}${nestedImports}\n\n${helpComment}\n${classDefinition}`;
+    return `${imports.join('\n')}${nestedImports}\n\n${classDefinition}`;
   }, [getSchema]);
 
   const wouldIntroduceCycle = useCallback((rootId: string, candidateId: string): boolean => {

@@ -1,4 +1,5 @@
-import type { NodeKind, PortType } from "@/components/flowbuilder/types";
+import type { NodeKind, PortType, Port } from "@/components/flowbuilder/types";
+import { genId } from "@/lib/flow-utils";
 
 export type SectionType = "control_group" | "port_list" | "empty_spacer";
 
@@ -186,4 +187,69 @@ export const NodeRegistry: Record<NodeKind, NodeDefinition> = {
 // Helpers to pick sections for a node instance
 export function getNodeDefinition(kind: NodeKind): NodeDefinition {
   return NodeRegistry[kind];
+}
+
+// Centralized defaults for node ports and data
+export function buildNodeDefaults(
+  kind: NodeKind,
+  requiredInputType?: PortType
+): { inputs: Port[]; outputs: Port[]; llm?: { model?: string; temperature?: number; top_p?: number; max_tokens?: number }; values?: Record<string, any> } {
+  const makePort = (name: string, type: PortType): Port => ({ id: genId("p"), name, type, description: "" });
+
+  let inputs: Port[] = [];
+  let outputs: Port[] = [];
+  let llm: { model?: string; temperature?: number; top_p?: number; max_tokens?: number } | undefined;
+  let values: Record<string, any> | undefined;
+
+  if (kind === "chainofthought") {
+    inputs = [
+      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
+      makePort("prompt", requiredInputType || "string"),
+    ];
+    outputs = [
+      { ...makePort("reasoning", "string"), locked: true },
+      makePort("output", "string"),
+    ];
+    llm = { model: "gemini/gemini-2.5-flash" };
+  } else if (kind === "predict") {
+    inputs = [
+      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
+      makePort("prompt", requiredInputType || "string"),
+    ];
+    outputs = [makePort("output", "string")];
+    llm = { model: "gemini/gemini-2.5-flash" };
+  } else if (kind === "input") {
+    inputs = [];
+    outputs = [makePort("prompt", "string")];
+  } else if (kind === "output") {
+    inputs = [makePort("output", requiredInputType || "string")];
+    outputs = [];
+  } else if (kind === "llm") {
+    inputs = [];
+    outputs = [{ ...makePort("model", "llm"), description: "LLM provider output", locked: true }];
+    llm = { model: "gemini/gemini-2.5-flash" };
+  } else if (kind === "agent") {
+    inputs = [
+      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
+      { ...makePort("question", requiredInputType || "string"), locked: true },
+      { ...makePort("tools", "tool"), description: "Attach tool nodes here (multi-input)", locked: true },
+    ];
+    outputs = [makePort("answer", "string")];
+    llm = { model: "gemini/gemini-2.5-flash" };
+  } else if (kind === "tool_wikipedia") {
+    inputs = [];
+    outputs = [{ ...makePort("tool", "tool"), description: "Wikipedia search tool", locked: true }];
+  } else if (kind === "tool_math") {
+    inputs = [];
+    outputs = [{ ...makePort("tool", "tool"), description: "Math evaluation tool", locked: true }];
+  } else if (kind === "tool_python") {
+    inputs = [];
+    outputs = [{ ...makePort("tool", "tool"), description: "Custom Python tool", locked: true }];
+    values = {
+      code:
+        "def my_tool(input: str):\n    \"\"\"Implement your tool. Replace name/signature as needed.\n    \"\"\"\n    # TODO: implement\n    return input\n",
+    };
+  }
+
+  return { inputs, outputs, llm, values };
 }

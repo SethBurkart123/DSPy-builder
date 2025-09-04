@@ -28,78 +28,25 @@ import Palette from "@/components/flowbuilder/Palette";
 import { toast } from "react-hot-toast";
 import type { ColorMode, ReactFlowInstance } from "@xyflow/react";
 import { getNodeTitle, edgeStyleForType, portTypeForHandle, NODE_WIDTH, HEADER_HEIGHT, PORT_ROW_HEIGHT, HANDLE_SIZE, genId } from "@/lib/flow-utils";
+import { buildNodeDefaults } from "@/lib/node-def";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 
 const nodeTypes = { typed: TypedNode } as any;
 
-function makePort(name: string, type: PortType): Port {
-  return { id: genId("p"), name, type, description: "" };
-}
-
 function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: string, requiredInputType?: PortType): Node<TypedNodeData> {
-  let inputs: Port[] = [];
-  let outputs: Port[] = [];
-  
-  if (kind === "chainofthought") {
-    inputs = [
-      // dedicated model input (LLM provider only)
-      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
-      makePort("prompt", requiredInputType || "string"),
-    ];
-    outputs = [
-      { ...makePort("reasoning", "string"), locked: true },
-      makePort("output", "string")
-    ];
-  } else if (kind === "predict") {
-    inputs = [
-      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
-      makePort("prompt", requiredInputType || "string"),
-    ];
-    outputs = [makePort("output", "string")];
-  } else if (kind === "input") {
-    // Singleton input node: only outputs
-    inputs = [];
-    outputs = [makePort("prompt", "string")];
-  } else if (kind === "output") {
-    // Final sink: only inputs (start empty, add via drag)
-    inputs = [makePort("output", requiredInputType || "string")];
-    outputs = [];
-  } else if (kind === "llm") {
-    // LLM provider: emits a provider value consumable by model inputs
-    inputs = [];
-    outputs = [
-      { ...makePort("model", "llm"), description: "LLM provider output", locked: true },
-    ];
-  } else if (kind === "agent") {
-    inputs = [
-      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
-      { ...makePort("question", requiredInputType || "string"), locked: true },
-      { ...makePort("tools", "tool"), description: "Attach tool nodes here (multi-input)", locked: true },
-    ];
-    outputs = [makePort("answer", "string")];
-  } else if (kind === "tool_wikipedia") {
-    inputs = [];
-    outputs = [{ ...makePort("tool", "tool"), description: "Wikipedia search tool", locked: true }];
-  } else if (kind === "tool_math") {
-    inputs = [];
-    outputs = [{ ...makePort("tool", "tool"), description: "Math evaluation tool", locked: true }];
-  } else if (kind === "tool_python") {
-    inputs = [];
-    outputs = [{ ...makePort("tool", "tool"), description: "Custom Python tool", locked: true }];
-  }
-
+  const defaults = buildNodeDefaults(kind, requiredInputType);
   return {
     id: genId("n"),
     type: "typed",
     position,
     data: { 
       title: title ?? getNodeTitle(kind),
-      kind, 
-      inputs, 
-      outputs,
-      llm: (kind === 'llm' || kind === 'predict' || kind === 'chainofthought' || kind === 'agent') ? { model: 'gemini/gemini-2.5-flash' } : undefined,
-      values: (kind === 'tool_python') ? { code: "def my_tool(input: str):\n    \"\"\"Implement your tool. Replace name/signature as needed.\n    \"\"\"\n    # TODO: implement\n    return input\n" } : undefined,
+      kind,
+      inputs: defaults.inputs,
+      outputs: defaults.outputs,
+      llm: defaults.llm,
+      values: defaults.values,
     },
   };
 }
@@ -872,17 +819,6 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   function updateSelectedNode(data: TypedNodeData) {
     if (!selectedNodeId) return;
     
-    // Ensure reasoning port is always present on chainofthought nodes
-    if (data.kind === "chainofthought") {
-      const hasReasoning = data.outputs.some(p => p.name === "reasoning");
-      if (!hasReasoning) {
-        data = {
-          ...data,
-          outputs: [{ ...makePort("reasoning", "string"), locked: true }, ...data.outputs]
-        };
-      }
-    }
-
     const prev = nodes.find(n => n.id === selectedNodeId);
     const changed = prev ? hasNodeConfigChange(prev.data, data) : false;
     if (changed && prev && prev.data.runtime?.status === 'done') {
@@ -955,8 +891,6 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     
     // Create the connection using the nodes state update callback to ensure we have the latest nodes
     setNodes((currentNodes) => {
-      // The node is already added to currentNodes at this point
-      
       // Find a compatible port on the new node
       let compatiblePort: Port | null = null;
       

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import json
 import os
 import sys
@@ -12,6 +11,7 @@ import dspy
 
 from .dspy_streaming import StreamingCallback
 from .dspy_signature import build_signature
+from .runner_core import get_lm, parse_tools, build_module, collect_outputs
 
 
 def _emit(obj: dict[str, Any]):
@@ -81,11 +81,7 @@ def run_stream(payload: dict) -> int:
         Sig = build_signature(title.replace(" ", "_"), desc, inputs_schema, outputs_schema)
 
         # Configure LM + callbacks
-        if model:
-            lm = dspy.LM(model=model, **lm_params)
-        else:
-            lm = dspy.LM()
-
+        lm = get_lm(model, lm_params)
         callback = StreamingCallback(_emit, run_id=run_id, node_meta=node_meta)
         dspy.settings.configure(lm=lm, callbacks=[callback])
 
@@ -93,48 +89,21 @@ def run_stream(payload: dict) -> int:
         if kind == "chainofthought":
             module = dspy.ChainOfThought(Sig)
         elif kind == "agent":
-            tool_funcs = []
-            errors: list[str] = []
-            for idx, code in enumerate(tools_code):
-                try:
-                    tree = ast.parse(code)
-                except Exception as e:
-                    errors.append(f"Tool #{idx+1} parse error: {e}")
-                    continue
-                if not any(getattr(n, "name", None) and hasattr(n, "args") for n in tree.body):
-                    errors.append(f"Tool #{idx+1} must define at least one function (def ...)")
-                    continue
-                try:
-                    ns: dict[str, Any] = {"dspy": dspy}
-                    exec(compile(tree, filename=f"<tool_{idx+1}>", mode="exec"), ns, ns)
-                    fns = [v for k, v in ns.items() if callable(v) and not k.startswith("__")]
-                    if not fns:
-                        errors.append(f"Tool #{idx+1} did not define any callable functions")
-                        continue
-                    tool_funcs.append(wrap_tool(fns[-1], run_id, node_meta, idx))
-                except Exception as e:
-                    errors.append(f"Tool #{idx+1} execution error: {e}")
-                    continue
+            tools, errors = parse_tools(tools_code or [], wrap=lambda fn, idx: wrap_tool(fn, run_id, node_meta, idx))
             if errors:
                 _emit({"event": "error", "run_id": run_id, "node": node_meta, "message": "; ".join(errors)})
                 return 1
-            if not tool_funcs:
+            if not tools:
                 _emit({"event": "error", "run_id": run_id, "node": node_meta, "message": "Agent requires at least one valid tool"})
                 return 1
-            module = dspy.ReAct(Sig, tools=tool_funcs)
+            module = build_module(kind, Sig, tools=tools)
         else:
-            module = dspy.Predict(Sig)
+            module = build_module(kind, Sig)
 
         # Execute
         pred = module(**inputs_values)
 
-        outputs: dict[str, Any] = {}
-        for f in outputs_schema:
-            name = f.get("name")
-            try:
-                outputs[name] = getattr(pred, name)
-            except Exception:
-                outputs[name] = None
+        outputs = collect_outputs(pred, outputs_schema)
 
         reasoning = getattr(pred, "reasoning", None)
         _emit({"event": "result", "run_id": run_id, "node": node_meta, "outputs": outputs, "reasoning": reasoning})

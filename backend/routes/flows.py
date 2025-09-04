@@ -2,7 +2,7 @@ from typing import AsyncGenerator, List
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import StreamingResponse
 
-from app.db import get_connection, init_db
+from app.db import get_connection
 from app.schemas import (
     FlowOut,
     FlowCreate,
@@ -20,13 +20,8 @@ from app.utils import now_iso, new_id, slugify
 router = APIRouter()
 
 
-def ensure_db():
-    init_db()
-
-
 @router.get("/", response_model=List[FlowOut])
 def list_flows():
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute(
             "SELECT id, name, slug, created_at, updated_at FROM flows ORDER BY created_at DESC"
@@ -37,7 +32,6 @@ def list_flows():
 
 @router.post("/", response_model=FlowOut)
 def create_flow(payload: FlowCreate):
-    ensure_db()
     flow_id = new_id()
     created_at = updated_at = now_iso()
     base_slug = slugify(payload.name)
@@ -54,7 +48,6 @@ def create_flow(payload: FlowCreate):
 
 @router.get("/{flow_id}", response_model=FlowOut)
 def get_flow(flow_id: str):
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute(
             "SELECT id, name, slug, created_at, updated_at FROM flows WHERE id = ?",
@@ -68,7 +61,6 @@ def get_flow(flow_id: str):
 
 @router.patch("/{flow_id}", response_model=FlowOut)
 def rename_flow(flow_id: str, payload: FlowUpdate):
-    ensure_db()
     with get_connection() as conn:
         # validate existence
         cur = conn.execute("SELECT slug FROM flows WHERE id = ?", (flow_id,))
@@ -94,7 +86,6 @@ def rename_flow(flow_id: str, payload: FlowUpdate):
 
 @router.delete("/{flow_id}")
 def delete_flow(flow_id: str):
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute("DELETE FROM flows WHERE id = ?", (flow_id,))
         if cur.rowcount == 0:
@@ -105,7 +96,6 @@ def delete_flow(flow_id: str):
 
 @router.get("/{flow_id}/state", response_model=FlowStateOut)
 def get_flow_state(flow_id: str):
-    ensure_db()
     with get_connection() as conn:
         # validate flow exists
         cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
@@ -126,7 +116,6 @@ def get_flow_state(flow_id: str):
 
 @router.put("/{flow_id}/state", response_model=FlowStateOut)
 def upsert_flow_state(flow_id: str, payload: FlowStateIn):
-    ensure_db()
     with get_connection() as conn:
         # validate flow exists
         cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
@@ -160,7 +149,6 @@ def upsert_flow_state(flow_id: str, payload: FlowStateIn):
 
 @router.get("/{flow_id}/schemas", response_model=list[FlowSchemaOut])
 def list_flow_schemas(flow_id: str):
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
         if not cur.fetchone():
@@ -188,7 +176,6 @@ def list_flow_schemas(flow_id: str):
 
 @router.post("/{flow_id}/schemas", response_model=FlowSchemaOut)
 def create_flow_schema(flow_id: str, payload: FlowSchemaIn):
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
         if not cur.fetchone():
@@ -214,7 +201,6 @@ def create_flow_schema(flow_id: str, payload: FlowSchemaIn):
 
 @router.get("/{flow_id}/schemas/{schema_id}", response_model=FlowSchemaOut)
 def get_flow_schema(flow_id: str, schema_id: str):
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
         if not cur.fetchone():
@@ -240,7 +226,6 @@ def get_flow_schema(flow_id: str, schema_id: str):
 
 @router.put("/{flow_id}/schemas/{schema_id}", response_model=FlowSchemaOut)
 def update_flow_schema(flow_id: str, schema_id: str, payload: FlowSchemaIn):
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
         if not cur.fetchone():
@@ -267,7 +252,6 @@ def update_flow_schema(flow_id: str, schema_id: str, payload: FlowSchemaIn):
 
 @router.delete("/{flow_id}/schemas/{schema_id}")
 def delete_flow_schema(flow_id: str, schema_id: str):
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute("DELETE FROM flow_schemas WHERE id = ? AND flow_id = ?", (schema_id, flow_id))
         if cur.rowcount == 0:
@@ -299,7 +283,6 @@ def _unique_slug(base: str, exclude_id: str | None = None) -> str:
 
 @router.post("/{flow_id}/run/node", response_model=NodeRunOut)
 def run_node(flow_id: str, payload: NodeRunIn):
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
         if not cur.fetchone():
@@ -347,7 +330,6 @@ async def run_node_stream(flow_id: str, request: Request):
     This streams the stdout of a subprocess running `app.node_runner_stream` which emits
     JSON lines using a DSPy callback and tool wrappers.
     """
-    ensure_db()
     with get_connection() as conn:
         cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
         if not cur.fetchone():
