@@ -59,11 +59,7 @@ export function PortListSection({
   }, [autogrow, data.kind, dragState, isDragHovering, nodeId, role, accepts]);
 
   const handleDropZoneClick = useCallback(() => {
-    console.log("HI")
     if (dragState?.isDragging && dragState.portType && dragState.sourceNodeId && dragState.handleId) {
-      // remove the current 
-
-
       const eventDetail = {
         targetNodeId: nodeId,
         portType: dragState.portType,
@@ -145,12 +141,6 @@ export function PortListSection({
                     {p.locked && <Lock className="h-3 w-3" />}
                   </div>
                   {(() => {
-                    // For predict/chainofthought nodes, always show the description (no runtime preview)
-                    if (data.kind === 'predict' || data.kind === 'chainofthought') {
-                      return p.description ? (
-                        <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">{p.description}</div>
-                      ) : null;
-                    }
                     // For input nodes, show configured value if present, else description
                     if (data.kind === 'input') {
                       const v = data.values?.[p.name];
@@ -159,18 +149,17 @@ export function PortListSection({
                         <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">{txt}</div>
                       ) : null;
                     }
-                    // Other nodes: show runtime preview if available, else description
-                    const out = data.runtime?.outputs?.[p.name];
-                    const txt = out !== undefined ? formatValue(out) : p.description;
-                    return txt ? (
-                      <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">{txt}</div>
+
+                    // show the description
+                    return p.description ? (
+                      <div className="text-gray-500 text-[10px] leading-tight mt-1 truncate">{p.description}</div>
                     ) : null;
                   })()}
                 </div>
               </div>
             ))}
 
-        {showDropZone && dragState?.portType && role === "inputs" && (
+        {showDropZone && dragState?.portType && dragState?.portType !== "llm" && role === "inputs" && (
           <div className="flex items-center text-[10px] w-full relative" style={{ height: `${portSpacing}px` }}>
             <Handle
               id={`in-${dropzoneId}`}
