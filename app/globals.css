@@ -126,10 +126,3 @@
 .flow-builder .react-flow__nodesselection {
   display: none !important;
 }
-
-/* Subtle node pulse for running state */
-@keyframes node-pulse {
-  0% { transform: translateZ(0) scale(1); }
-  50% { transform: translateZ(0) scale(1.015); }
-  100% { transform: translateZ(0) scale(1); }
-}

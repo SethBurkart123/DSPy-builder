@@ -66,8 +66,7 @@ export function ControlGroupSection({
                 className="border !border-border absolute"
                 style={{
                   ...handleStyleForPort((ctl.bind.portType || inputPort.type) as PortType),
-                  left: -(HANDLE_SIZE / 2) - NODE_GRID_PADDING_X,
-                  top: 18,
+                  left: -(NODE_GRID_PADDING_X),
                 }}
               />
             )}

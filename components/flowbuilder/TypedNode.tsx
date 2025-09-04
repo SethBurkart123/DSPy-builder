@@ -1,21 +1,20 @@
 "use client";
 
 import { memo, useEffect, useState } from "react";
-import { NodeProps, useUpdateNodeInternals } from "@xyflow/react";
+import { NodeProps, useUpdateNodeInternals, type Node } from "@xyflow/react";
 import { type TypedNodeData } from "./types";
 import { getNodeDefinition } from "@/lib/node-def";
 import { HEADER_HEIGHT, PORT_ROW_HEIGHT } from "@/lib/flow-utils";
 import { PortListSection, ControlGroupSection } from "./sections";
 import { Loader2 } from "lucide-react";
 
-function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
+function TypedNodeComponent({ data, selected, id }: NodeProps<Node<TypedNodeData>>) {
   const [isDragHovering, setIsDragHovering] = useState(false);
   const updateNodeInternals = useUpdateNodeInternals();
 
   useEffect(() => {
     function updateInternals(event: any) {
       updateNodeInternals(event.detail.id)
-      console.log("updated", event.detail.id)
     }
     window.addEventListener("update-node-internals", updateInternals);
     return () => window.removeEventListener("update-node-internals", updateInternals);
@@ -53,7 +52,7 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
     >
       <div 
         className={`w-[240px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "outline-primary/50 outline-2" : ""} relative flex flex-col`}
-        style={{ minHeight: `${minTotalHeight}px`, boxShadow, animation: status === 'running' ? 'node-pulse 1.4s ease-in-out infinite' as any : undefined }}
+        style={{ minHeight: `${minTotalHeight}px`, boxShadow }}
       >
         <div className="flex items-center justify-between rounded-t-lg border-b bg-muted/50 px-3 py-2 pb-[14px] relative">
           <div className="text-xs font-semibold truncate">{data.title}</div>

@@ -1,7 +1,6 @@
 from typing import AsyncGenerator, List
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import StreamingResponse
-import sqlite3
 
 from app.db import get_connection, init_db
 from app.schemas import (

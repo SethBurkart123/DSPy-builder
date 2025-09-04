@@ -5,64 +5,9 @@ import sys
 from typing import Any
 import ast
 import dspy
+from .dspy_signature import build_signature
 
-def _py_type(t: str, array_item_type: str | None = None):
-    t = t.lower()
-    if t == "string":
-        return str
-    if t == "string[]":
-        return list[str]
-    if t == "boolean":
-        return bool
-    if t == "float":
-        return float
-    if t == "int":
-        return int
-    if t == "array":
-        if array_item_type == "string":
-            return list[str]
-        if array_item_type == "int":
-            return list[int]
-        if array_item_type == "float":
-            return list[float]
-        if array_item_type == "boolean":
-            return list[bool]
-        return list
-    if t == "object":
-        return dict
-    # internal-only type: treat as string for annotation
-    if t == "llm":
-        return str
-    if t == "tool":
-        # not part of signature (skipped), but default to object
-        return dict
-    return str
-
-
-def build_signature(signature_name: str, description: str | None, inputs_schema: list[dict], outputs_schema: list[dict]):
-
-    annotations: dict[str, Any] = {}
-    attrs: dict[str, Any] = {}
-    if description:
-        attrs["__doc__"] = description
-
-    # inputs
-    for f in inputs_schema:
-        if f.get("type") in {"llm", "tool"}:
-            continue  # not part of signature
-        name = f["name"]
-        annotations[name] = _py_type(f.get("type", "string"))
-        attrs[name] = getattr(__import__("dspy"), "InputField")(desc=f.get("description") or "")
-
-    # outputs
-    for f in outputs_schema:
-        name = f["name"]
-        annotations[name] = _py_type(f.get("type", "string"))
-        attrs[name] = getattr(__import__("dspy"), "OutputField")(desc=f.get("description") or "")
-
-    attrs["__annotations__"] = annotations
-    Sig = type(signature_name, (getattr(__import__("dspy"), "Signature"),), attrs)
-    return Sig
+ 
 
 
 def run(payload: dict) -> dict:

@@ -240,7 +240,6 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     function handleAddInputPort(event: any) {
       const { targetNodeId, portType, sourceNodeId, sourceHandleId, dropzoneId } = event.detail;
-      console.log("Nodes: ", nodes)
       // Find the target node and add a new input port using the dropzone ID
       setNodes((currentNodes: Node<TypedNodeData>[]) => {
         return currentNodes.map((node: Node<TypedNodeData>) => {
@@ -253,8 +252,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
               type: portType,
               description: "",
             };
-
-            console.log(newPort)
+            
             
             return {
               ...node,
@@ -535,11 +533,36 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     return { codes };
   }
 
+  function getToolNodeIdsForAgent(node: Node<TypedNodeData>): string[] {
+    if (node.data.kind !== 'agent') return [];
+    const toolsPort = node.data.inputs.find(p => p.type === 'tool' && p.name === 'tools');
+    if (!toolsPort) return [];
+    const incoming = edges.filter(e => e.target === node.id && e.targetHandle === `in-${toolsPort.id}`);
+    const ids: string[] = [];
+    for (const e of incoming) {
+      const src = nodes.find(n => n.id === e.source);
+      if (src) ids.push(src.id);
+    }
+    return ids;
+  }
+
   async function runNode(nodeId: string) {
     const node = nodes.find((n: Node<TypedNodeData>) => n.id === nodeId);
     if (!node) return;
     // set running
     setNodes((curr: Node<TypedNodeData>[]) => curr.map((n: Node<TypedNodeData>) => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { ...(n.data.runtime || {}), status: 'running', error: undefined } } } : n));
+
+    // If this is an agent, clear any previous tool-node highlights before the new run
+    if (node.data.kind === 'agent') {
+      const toolIds = getToolNodeIdsForAgent(node);
+      if (toolIds.length) {
+        setNodes((curr: Node<TypedNodeData>[]) => curr.map((n: Node<TypedNodeData>) => {
+          if (!toolIds.includes(n.id)) return n;
+          if (n.data.runtime) return { ...n, data: { ...n.data, runtime: undefined } } as Node<TypedNodeData>;
+          return n;
+        }));
+      }
+    }
 
     const resolution = resolveInputsFor(node);
     if (resolution.error) {
@@ -865,6 +888,13 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     if (changed && prev && prev.data.runtime?.status === 'done') {
       // Clear current compute node and downstream
       clearDownstream(selectedNodeId, true);
+      // If this is an agent, also clear connected tool nodes' highlights
+      if (prev.data.kind === 'agent') {
+        const toolIds = getToolNodeIdsForAgent(prev);
+        if (toolIds.length) {
+          setNodes((curr: Node<TypedNodeData>[]) => curr.map((n: Node<TypedNodeData>) => toolIds.includes(n.id) ? { ...n, data: { ...n.data, runtime: undefined } } : n));
+        }
+      }
     }
     setNodes((ns) => ns.map((n) => (n.id === selectedNodeId ? { ...n, data } : n)));
   }

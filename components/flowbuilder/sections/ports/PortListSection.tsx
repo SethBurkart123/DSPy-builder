@@ -37,7 +37,6 @@ export function PortListSection({
 
   useEffect(() => {
     function handleDragStateChange(event: any) {
-      console.log("state change")
       setDragState(event.detail);
     }
     window.addEventListener("drag-state-change", handleDragStateChange);
@@ -68,7 +67,6 @@ export function PortListSection({
         dropzoneId: dropzoneId,
       };
       const event = new CustomEvent("add-input-port", { detail: eventDetail });
-      console.log('dispatched event!')
       window.dispatchEvent(event);
 
       setDropzoneId(genId("p"));
@@ -98,7 +96,7 @@ export function PortListSection({
                   className={`border !border-border absolute`}
                   style={{
                     ...handleStyleForPort(p.type),
-                    left: -(HANDLE_SIZE / 2) - NODE_GRID_PADDING_X,
+                    left: -((HANDLE_SIZE / 2) + NODE_GRID_PADDING_X),
                     top: "50%",
                     transform: "translateY(-50%)",
                   }}
@@ -127,7 +125,7 @@ export function PortListSection({
                   className={`border !border-border absolute`}
                   style={{
                     ...handleStyleForPort(p.type),
-                    right: -(HANDLE_SIZE / 2) - NODE_GRID_PADDING_X,
+                    right: -((HANDLE_SIZE / 2) + NODE_GRID_PADDING_X),
                     top: "50%",
                     transform: "translateY(-50%)",
                   }}
@@ -169,7 +167,7 @@ export function PortListSection({
               className={`border !border-border absolute`}
               style={{
                 ...handleStyleForPort(dragState.portType),
-                left: -(HANDLE_SIZE / 2) - NODE_GRID_PADDING_X,
+                left: -((HANDLE_SIZE / 2) + NODE_GRID_PADDING_X),
               }}
             />
             <span className="italic opacity-80">{dragState.portType}</span>
