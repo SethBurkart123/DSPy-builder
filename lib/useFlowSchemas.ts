@@ -23,6 +23,10 @@ function toSchemaField(f: ApiSchemaField): SchemaField {
     arrayItemType: f.arrayItemType as PortType | undefined,
     arrayItemSchemaId: f.arrayItemSchemaId || undefined,
     objectSchemaId: f.objectSchemaId || undefined,
+    customType: (f as any).customType || undefined,
+    arrayItemCustomType: (f as any).arrayItemCustomType || undefined,
+    literalKind: (f as any).literalKind || undefined,
+    literalValues: (f as any).literalValues || undefined,
   };
 }
 
@@ -36,6 +40,10 @@ function fromSchemaField(f: SchemaField): ApiSchemaField {
     arrayItemType: f.arrayItemType,
     arrayItemSchemaId: f.arrayItemSchemaId,
     objectSchemaId: f.objectSchemaId,
+    customType: f.customType || null,
+    arrayItemCustomType: f.arrayItemCustomType || null,
+    literalKind: f.literalKind || null,
+    literalValues: f.literalValues || null,
   };
 }
 
@@ -79,8 +87,17 @@ export function useFlowSchemas(flowId: string) {
       if (!field.name.trim()) errors.push(`Field ${index + 1}: Name is required`);
       const duplicates = schema.fields.filter(f => f.name === field.name);
       if (duplicates.length > 1) errors.push(`Field "${field.name}": Duplicate field names are not allowed`);
-      if (field.type === "array" && !field.arrayItemType) errors.push(`Field "${field.name}": Array type requires item type specification`);
+      if (field.type === "array") {
+        if (!field.arrayItemType) errors.push(`Field "${field.name}": Array type requires item type specification`);
+        if (field.arrayItemType === 'object' && !field.arrayItemSchemaId) errors.push(`Field "${field.name}": Array of objects requires a schema`);
+        if (field.arrayItemType === 'custom' && !(field.arrayItemCustomType || '').trim()) errors.push(`Field "${field.name}": Array of custom types requires a type string`);
+      }
       if (field.type === "object" && !field.objectSchemaId) errors.push(`Field "${field.name}": Object type requires schema specification`);
+      if (field.type === 'custom' && !(field.customType || '').trim()) errors.push(`Field "${field.name}": Custom type requires a type string`);
+      if (field.type === 'literal') {
+        if (!field.literalKind) errors.push(`Field "${field.name}": Literal requires a base kind`);
+        if (!field.literalValues || field.literalValues.length === 0) errors.push(`Field "${field.name}": Literal requires at least one value`);
+      }
     });
     return errors;
   }, []);
@@ -92,6 +109,13 @@ export function useFlowSchemas(flowId: string) {
         case "int": return "int";
         case "float": return "float";
         case "boolean": return "bool";
+        case "custom": return field.customType || 'Any';
+        case "literal":
+          if (field.literalValues && field.literalValues.length > 0) {
+            const vals = field.literalValues.map(v => typeof v === 'string' ? `'${String(v).replace(/'/g, "\\'")}'` : String(v)).join(', ');
+            return `Literal[${vals}]`;
+          }
+          return field.literalKind === 'string' ? 'str' : field.literalKind === 'int' ? 'int' : field.literalKind === 'float' ? 'float' : 'bool';
         case "array":
           if (field.arrayItemType === "string") {
             return "List[str]";
@@ -101,6 +125,8 @@ export function useFlowSchemas(flowId: string) {
             return "List[float]";
           } else if (field.arrayItemType === "boolean") {
             return "List[bool]";
+          } else if (field.arrayItemType === 'custom') {
+            return `List[${field.arrayItemCustomType || 'Any'}]`;
           } else if (field.arrayItemSchemaId) {
             const s = getSchema(field.arrayItemSchemaId);
             return `List[${s?.name || 'dict'}]`;
@@ -119,7 +145,7 @@ export function useFlowSchemas(flowId: string) {
       }
     };
 
-    const fields = schema.fields.map(field => {
+    const fieldsFor = (s: CustomSchema) => s.fields.map(field => {
       const dspyType = getDSPyType(field);
       const description = field.description;
       
@@ -146,31 +172,55 @@ export function useFlowSchemas(flowId: string) {
     // Generate DSPy imports
     const imports = [
       "import dspy",
-      "from typing import List, Optional"
+      "from typing import List, Optional, Literal"
     ];
 
-    // Check if we need nested schema imports
-    const nestedSchemas = new Set<string>();
-    const collectNestedSchemas = (field: SchemaField) => {
-      if (field.objectSchemaId) {
-        const s = getSchema(field.objectSchemaId);
-        if (s) nestedSchemas.add(s.name);
-      }
-      if (field.arrayItemSchemaId) {
-        const s = getSchema(field.arrayItemSchemaId);
-        if (s) nestedSchemas.add(s.name);
+    // Collect dependency graph and emit nested schemas first
+    const byId = new Map<string, CustomSchema>();
+    schemas.forEach(s => byId.set(s.id, s));
+
+    const depIds = new Set<string>();
+    const visitCollect = (s: CustomSchema) => {
+      for (const f of s.fields) {
+        if (f.objectSchemaId) {
+          depIds.add(f.objectSchemaId);
+          const child = byId.get(f.objectSchemaId);
+          if (child) visitCollect(child);
+        }
+        if (f.arrayItemSchemaId) {
+          depIds.add(f.arrayItemSchemaId);
+          const child = byId.get(f.arrayItemSchemaId);
+          if (child) visitCollect(child);
+        }
       }
     };
-    schema.fields.forEach(collectNestedSchemas);
+    visitCollect(schema);
 
-    const nestedImports = Array.from(nestedSchemas).length > 0 
-      ? `\n# Import nested schemas: ${Array.from(nestedSchemas).join(', ')}`
-      : '';
+    // Emit classes in DFS order so dependencies appear before use
+    const emitted = new Set<string>();
+    const out: string[] = [];
+    const emitClass = (s: CustomSchema) => {
+      if (emitted.has(s.id)) return;
+      // Emit dependencies first
+      for (const f of s.fields) {
+        if (f.objectSchemaId) {
+          const child = byId.get(f.objectSchemaId);
+          if (child) emitClass(child);
+        }
+        if (f.arrayItemSchemaId) {
+          const child = byId.get(f.arrayItemSchemaId);
+          if (child) emitClass(child);
+        }
+      }
+      const fields = fieldsFor(s);
+      const classDef = `class ${s.name}(dspy.Signature):${s.description ? `\n    \"\"\"${s.description}\"\"\"` : ""}${fields.length > 0 ? `\n${fields.join('\n')}` : '\n    pass'}`;
+      out.push(classDef);
+      emitted.add(s.id);
+    };
+    emitClass(schema);
 
-    const classDefinition = `class ${schema.name}(dspy.Signature):${schema.description ? `\n    \"\"\"${schema.description}\"\"\"` : ""}${fields.length > 0 ? `\n${fields.join('\n')}` : '\n    pass'}`;
-
-    return `${imports.join('\n')}${nestedImports}\n\n${classDefinition}`;
-  }, [getSchema]);
+    return `${imports.join('\n')}\n\n${out.join('\n\n')}`;
+  }, [getSchema, schemas]);
 
   const wouldIntroduceCycle = useCallback((rootId: string, candidateId: string): boolean => {
     if (rootId === candidateId) return true;
@@ -242,4 +292,3 @@ export function useFlowSchemas(flowId: string) {
 function generateFieldId(): string {
   return `field_${Math.random().toString(36).slice(2, 9)}`;
 }
-

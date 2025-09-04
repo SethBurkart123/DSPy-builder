@@ -33,25 +33,65 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<Node<TypedNodeData
   let glowColor = '';
   if (status === 'running') {
     // Tools glow amber when running; other nodes glow rose
-    if (data.kind.startsWith('tool_')) glowColor = 'rgba(245,158,11,0.55)'; // amber-500
-    else glowColor = 'rgba(244,63,94,0.60)'; // rose-500
+    glowColor = 'rgba(245,158,11,0.55)'; // amber-500
   } else if (status === 'done') {
     glowColor = 'rgba(16,185,129,0.55)'; // emerald-500
   } else if (status === 'error') {
     glowColor = 'rgba(239,68,68,0.55)'; // red-500
   }
 
-  const boxShadow = glowColor ? `0 0 14px ${glowColor}` : undefined;
+  const boxShadow = glowColor ? `0 0 0 ${selected ? "3px" : "1px"} ${glowColor}` : undefined;
 
   return (
     <div 
-      className="relative"
-      style={{ padding: '20px' }}
+      className={`relative ${data.kind.startsWith('tool_') ? 'tool-node' : ''}`}
+      style={{ padding: '8px' }}
       onMouseEnter={() => setIsDragHovering(true)}
       onMouseLeave={() => setIsDragHovering(false)}
     >
-      <div 
-        className={`w-[240px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "outline-primary/50 outline-2" : ""} relative flex flex-col`}
+      
+    {data.kind.startsWith('tool_') ? 
+      (
+        <div 
+        className={`w-[240px] rounded-full border bg-card text-card-foreground shadow ${selected ? "outline-primary/50 outline-3" : ""} relative flex flex-col`}
+        style={{ boxShadow }}
+      >
+        <div className="flex items-center justify-between bg-muted/50 px-3 py-2 relative rounded-full">
+          <div className="text-xs font-semibold truncate">{data.title}</div>
+          {status === 'running' && (
+            <div className="absolute right-2 top-2 text-[10px] rounded-full">
+              <Loader2 className="h-3.5 w-3.5 animate-spin opacity-80" />
+            </div>
+          )}
+
+          {(() => {
+            const def = getNodeDefinition(data.kind);
+            return def.sections.map((sec) => {
+              if (sec.type === "port_list" && sec.role === "outputs") {
+                return (
+                  <div key={sec.id}>
+                    <PortListSection
+                      nodeId={id}
+                      data={data}
+                      role="outputs"
+                      autogrow={sec.autogrow}
+                      accepts={sec.accepts}
+                      isDragHovering={isDragHovering}
+                      hideLabels={true}
+                    />
+                  </div>
+                );
+              }
+              return null;
+            });
+          })()}
+        </div>
+      </div>
+      )
+    : 
+      (
+        <div 
+        className={`w-[240px] border bg-card text-card-foreground rounded-md shadow ${selected ? "outline-primary/50 outline-3" : ""} relative flex flex-col`}
         style={{ minHeight: `${minTotalHeight}px`, boxShadow }}
       >
         <div className="flex items-center justify-between rounded-t-lg border-b bg-muted/50 px-3 py-2 pb-[14px] relative">
@@ -111,6 +151,7 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<Node<TypedNodeData
           })()}
         </div>
       </div>
+      )}
     </div>
   );
 }

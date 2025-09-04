@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, type Flow } from "@/lib/api";
+import { api, type Flow, type FlowExportBundle } from "@/lib/api";
 import Link from "next/link";
+import { useRef } from "react";
+import { Upload } from "lucide-react";
 
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
   if (!open) return null;
@@ -27,6 +29,9 @@ export default function FlowsDashboard() {
   const [renameName, setRenameName] = useState("");
   const [renameId, setRenameId] = useState<string | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -43,6 +48,23 @@ export default function FlowsDashboard() {
   useEffect(() => {
     load();
   }, []);
+
+  // Load previews lazily after flows
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPreviews() {
+      const next: Record<string, string> = {};
+      for (const f of flows) {
+        try {
+          const p = await api.getFlowPreview(f.id);
+          next[f.id] = p.image;
+        } catch {}
+      }
+      if (!cancelled) setPreviews(next);
+    }
+    if (flows.length) loadPreviews();
+    return () => { cancelled = true; };
+  }, [flows]);
 
   async function onCreate() {
     if (!createName.trim()) return;
@@ -72,12 +94,21 @@ export default function FlowsDashboard() {
   }
 
   return (
+    <>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted-foreground">Create, open, and manage flows</p>
         </div>
         <div className="flex gap-2">
+          <button
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+            onClick={() => fileInputRef.current?.click()}
+            title="Import Flow"
+          >
+            <Upload className="h-4 w-4" />
+            Import
+          </button>
           <button
             className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
             onClick={() => setCreateOpen(true)}
@@ -111,34 +142,50 @@ export default function FlowsDashboard() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-col gap-4">
           {flows.map((flow) => (
-            <div key={flow.id} className="rounded-lg border p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-lg font-medium">{flow.name}</h3>
-                  <p className="text-xs text-muted-foreground">{flow.slug}</p>
+            <div key={flow.id} className="rounded-lg border p-0 overflow-hidden">
+              <div className="flex h-32">
+                {/* Preview column */}
+                <div className="relative bg-muted/30" style={{ width: '20%' }}>
+                  {previews[flow.id] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={previews[flow.id]} alt={`${flow.name} preview`} className="h-full w-full object-fill" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                      No preview yet
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="mt-4 flex items-center gap-2">
-                <Link
-                  href={`/flow/${flow.id}`}
-                  className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:opacity-90"
-                >
-                  Open
-                </Link>
-                <button
-                  className="rounded-md border px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => openRename(flow)}
-                >
-                  Rename
-                </button>
-                <button
-                  className="rounded-md border px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-                  onClick={() => onDelete(flow.id)}
-                >
-                  Delete
-                </button>
+                {/* Text + actions column */}
+                <div className="flex-1 p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-lg font-medium">{flow.name}</h3>
+                      <p className="text-xs text-muted-foreground">{flow.slug}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/flow/${flow.id}`}
+                      className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:opacity-90"
+                    >
+                      Open
+                    </Link>
+                    <button
+                      className="rounded-md border px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => openRename(flow)}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      className="rounded-md border px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                      onClick={() => onDelete(flow.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ))}
@@ -200,6 +247,27 @@ export default function FlowsDashboard() {
         </div>
       </Modal>
     </div>
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="application/json"
+      style={{ display: 'none' }}
+      onChange={async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const obj = JSON.parse(text) as FlowExportBundle;
+          if (!obj || typeof obj !== 'object' || !obj.flow || !obj.state) throw new Error('Invalid bundle');
+          const res = await api.importFlow(obj);
+          setFlows((f) => [res.flow, ...f]);
+        } catch (err) {
+          alert('Failed to import flow');
+        } finally {
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      }}
+    />
+    </>
   );
 }
-

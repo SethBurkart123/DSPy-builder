@@ -19,6 +19,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import Topbar from "@/components/flowbuilder/Topbar";
+import FlowTracePanel from "@/components/flowbuilder/FlowTracePanel";
 import NodeInspector from "@/components/flowbuilder/NodeInspector";
 import { TypedNode } from "@/components/flowbuilder/TypedNode";
 import { CustomConnectionLine } from "@/components/flowbuilder/CustomConnectionLine";
@@ -31,6 +32,7 @@ import { getNodeTitle, edgeStyleForType, portTypeForHandle, NODE_WIDTH, HEADER_H
 import { buildNodeDefaults } from "@/lib/node-def";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { PlusIcon } from "lucide-react";
 
 const nodeTypes = { typed: TypedNode } as any;
 
@@ -63,6 +65,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance<Node<TypedNodeData>, Edge> | null>(null);
   const [loadedFromServer, setLoadedFromServer] = useState<boolean>(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false);
   // Track mouse position to place nodes at cursor when palette is used normally
   const [lastMousePos, setLastMousePos] = useState<{ x: number; y: number } | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TypedNodeData>>(initialNodes);
@@ -521,8 +524,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     const inputsSchema = node.data.inputs
       .filter((p: Port) => !(p.type === 'llm' && p.name === 'model'))
       .filter((p: Port) => p.type !== 'tool')
-      .map((p: Port) => ({ name: p.name, type: p.type, description: p.description }));
-    const outputsSchema = node.data.outputs.map((p: Port) => ({ name: p.name, type: p.type, description: p.description }));
+      .map((p: Port) => ({ name: p.name, type: p.type, description: p.description, arrayItemType: p.arrayItemType }));
+    const outputsSchema = node.data.outputs.map((p: Port) => ({ name: p.name, type: p.type, description: p.description, arrayItemType: p.arrayItemType }));
 
     try {
       let tools_code: string[] | undefined = undefined;
@@ -796,8 +799,10 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   }
 
   const onSelectionChange = useCallback(({ nodes: n, edges: e }: { nodes: Node[], edges: Edge[] }) => {
+    // Keep both singular and multi-select state in sync
     setSelectedNodeId(n[0]?.id ?? null);
     setSelectedEdgeId(e[0]?.id ?? null);
+    setSelectedNodeIds(n.map((node) => node.id));
   }, []);
 
   function hasNodeConfigChange(prev: TypedNodeData, next: TypedNodeData) {
@@ -997,7 +1002,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     updateSelectedNode(next);
   }
 
-  // Edge validation feedback: turn incompatible edges red
+  // Edge validation feedback: update edge color live (red when incompatible, typed color when OK)
   useEffect(() => {
     setEdges((eds) =>
       eds.map((e) => {
@@ -1006,12 +1011,12 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         const t1 = portTypeForHandle(n1 as any, e.sourceHandle);
         const t2 = portTypeForHandle(n2 as any, e.targetHandle);
         const incompatible = !!t1 && !!t2 && t1 !== t2;
-        const stroke = incompatible ? "#ef4444" /* red-500 */ : undefined;
-        const style = stroke ? { ...(e.style || {}), stroke } : { ...(e.style || {}) };
-        // Avoid churn if style unchanged
-        const hasStroke = (e.style as any)?.stroke;
-        if ((stroke && hasStroke !== stroke) || (!stroke && hasStroke)) {
-          return { ...e, style } as Edge;
+        const desiredStroke = incompatible
+          ? "#ef4444" // red-500 when incompatible
+          : (t1 ? edgeStyleForType(t1).stroke : (e.style as any)?.stroke);
+        const currentStroke = (e.style as any)?.stroke;
+        if (desiredStroke && desiredStroke !== currentStroke) {
+          return { ...e, style: { ...(e.style || {}), stroke: desiredStroke } } as Edge;
         }
         return e;
       })
@@ -1199,8 +1204,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           if (!ok) return;
         }
         router.push('/');
-      }} onRunAll={runAll} flowId={id} onUndo={undo} onRedo={redo} canUndo={historyIndexRef.current > 0} canRedo={historyIndexRef.current < historyRef.current.length - 1} />
-      <div className="absolute inset-0 top-14 flow-builder">
+      }} onRunAll={runAll} flowId={id} onUndo={undo} onRedo={redo} canUndo={historyIndexRef.current > 0} canRedo={historyIndexRef.current < historyRef.current.length - 1} onToggleTrace={() => setTraceOpen(v => !v)} traceOpen={traceOpen} />
+      <div className="absolute inset-0 top-14 flow-builder" style={{ right: traceOpen ? 420 : 0 }}>
         <ReactFlow
           nodeTypes={nodeTypes}
           nodes={nodes}
@@ -1289,10 +1294,6 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
           setPaletteOpen(false);
         }}
-        connectionContext={pendingConnection ? {
-          portType: pendingConnection.portType,
-          isFromOutput: pendingConnection.handleType === 'source'
-        } : undefined}
         hiddenKinds={(() => {
           const hidden: NodeKind[] = [] as NodeKind[];
           if (nodes.some(n => n.data.kind === 'input')) hidden.push('input');
@@ -1304,10 +1305,27 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       {/* Small FAB to open palette */}
       <button
         onClick={() => setPaletteOpen(true)}
-        className="fixed bottom-5 left-5 z-40 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
+        className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex justify-center items-center gap-1 rounded-full bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
       >
+        <PlusIcon className="h-4 w-4" />
         Add Node (Shift+A)
       </button>
+
+      {/* Trace Panel */}
+      <FlowTracePanel
+        open={traceOpen}
+        onClose={() => setTraceOpen(false)}
+        flowId={id}
+        nodes={nodes}
+        edges={edges}
+        onRunWithInputs={async (vals) => {
+          // Update input node values, then run all
+          setNodes(curr => curr.map(n => n.data.kind === 'input' ? ({ ...n, data: { ...n.data, values: { ...(n.data.values || {}), ...vals } } }) : n));
+          // Wait a tick to ensure state applied
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          await runAll();
+        }}
+      />
     </div>
   );
 }

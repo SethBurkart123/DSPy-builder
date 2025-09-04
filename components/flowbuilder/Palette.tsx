@@ -19,16 +19,11 @@ export default function Palette({
   open,
   onClose,
   onChoose,
-  connectionContext,
   hiddenKinds = [],
 }: {
   open: boolean;
   onClose: () => void;
   onChoose: (kind: NodeKind) => void;
-  connectionContext?: {
-    portType: string;
-    isFromOutput: boolean;
-  };
   hiddenKinds?: NodeKind[];
 }) {
   const [query, setQuery] = useState("");
@@ -81,7 +76,7 @@ export default function Palette({
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search nodes… (type then Enter)"
+          placeholder="Search nodes... (type then Enter)"
           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
         />
         <div className="mt-3 max-h-72 overflow-auto rounded-md border bg-background">

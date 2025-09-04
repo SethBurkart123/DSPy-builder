@@ -27,6 +27,10 @@ export type ApiSchemaField = {
   arrayItemType?: string | null;
   arrayItemSchemaId?: string | null;
   objectSchemaId?: string | null;
+  customType?: string | null;
+  arrayItemCustomType?: string | null;
+  literalKind?: "string" | "int" | "float" | "boolean" | null;
+  literalValues?: (string | number | boolean)[] | null;
 };
 
 export type ApiFlowSchema = {
@@ -36,6 +40,23 @@ export type ApiFlowSchema = {
   description?: string | null;
   fields: ApiSchemaField[];
   created_at: string;
+  updated_at: string;
+};
+
+export type FlowExportBundle = {
+  version: number;
+  flow: Flow;
+  state: { [k: string]: any };
+  schemas: ApiFlowSchema[];
+};
+
+export type FlowImportResult = {
+  flow: Flow;
+};
+
+export type FlowPreview = {
+  flow_id: string;
+  image: string;
   updated_at: string;
 };
 
@@ -151,4 +172,12 @@ export const api = {
       cache: "no-store",
     }
   ),
+  // Import/Export
+  exportFlow: (flowId: string) => http<FlowExportBundle>(`${BASE}/flows/${flowId}/export`),
+  importFlow: (bundle: FlowExportBundle) =>
+    http<FlowImportResult>(`${BASE}/flows/import`, { method: "POST", body: JSON.stringify(bundle) }),
+  // Previews
+  getFlowPreview: (flowId: string) => http<FlowPreview>(`${BASE}/flows/${flowId}/preview`),
+  setFlowPreview: (flowId: string, image: string) =>
+    http<FlowPreview>(`${BASE}/flows/${flowId}/preview`, { method: "PUT", body: JSON.stringify({ image }) }),
 };

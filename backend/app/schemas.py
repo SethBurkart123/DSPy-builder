@@ -39,6 +39,11 @@ class SchemaFieldModel(BaseModel):
     arrayItemType: Optional[str] = None
     arrayItemSchemaId: Optional[str] = None
     objectSchemaId: Optional[str] = None
+    # Extended typing support
+    customType: Optional[str] = None
+    arrayItemCustomType: Optional[str] = None
+    literalKind: Optional[str] = None  # "string" | "int" | "float" | "boolean"
+    literalValues: Optional[list[Any]] = None
 
 
 class FlowSchemaIn(BaseModel):
@@ -78,3 +83,28 @@ class NodeRunOut(BaseModel):
     outputs: dict | None = None
     reasoning: str | None = None
     error: str | None = None
+
+
+# ---- Import/Export ----
+
+class FlowExportBundle(BaseModel):
+    """Portable bundle containing everything needed to recreate a flow elsewhere."""
+    version: int = 1
+    flow: FlowOut
+    state: Dict[str, Any]
+    schemas: List[FlowSchemaOut]
+
+
+class FlowImportResult(BaseModel):
+    """Result of importing a bundle; returns the created flow info."""
+    flow: FlowOut
+
+
+class FlowPreviewIn(BaseModel):
+    image: str
+
+
+class FlowPreviewOut(BaseModel):
+    flow_id: str
+    image: str
+    updated_at: str

@@ -57,4 +57,15 @@ def init_db() -> None:
             )
             """
         )
+        # Optional preview image per flow (data URL string for simplicity)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS flow_previews (
+                flow_id TEXT PRIMARY KEY,
+                image TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(flow_id) REFERENCES flows(id) ON DELETE CASCADE
+            )
+            """
+        )
         conn.commit()

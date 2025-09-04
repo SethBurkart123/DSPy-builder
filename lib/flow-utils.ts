@@ -17,11 +17,11 @@ export function getNodeTitle(kind: NodeKind): string {
     case "agent":
       return "Agent (ReAct)";
     case "tool_wikipedia":
-      return "Tool: Search Wikipedia";
+      return "Search Wikipedia";
     case "tool_math":
-      return "Tool: Evaluate Math";
+      return "Evaluate Math";
     case "tool_python":
-      return "Tool: Custom Python";
+      return "Custom Python";
     default:
       return String(kind);
   }

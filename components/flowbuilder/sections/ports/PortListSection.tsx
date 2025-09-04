@@ -21,6 +21,7 @@ export function PortListSection({
   accepts,
   portSpacing = 32,
   isDragHovering = false,
+  hideLabels = false,
 }: {
   nodeId: string;
   data: TypedNodeData;
@@ -29,6 +30,7 @@ export function PortListSection({
   accepts?: PortType[];
   portSpacing?: number;
   isDragHovering?: boolean;
+  hideLabels?: boolean;
 }) {
   const [dragState, setDragState] = useState<DragState>(null);
   
@@ -101,7 +103,7 @@ export function PortListSection({
                     transform: "translateY(-50%)",
                   }}
                 />
-                <div className="text-xs min-w-0 flex-1">
+                <div className={`text-xs min-w-0 flex-1 ${hideLabels ? "hidden" : ""}`}>
                   <div className={`truncate flex items-center gap-1 ${p.locked ? "text-amber-700 font-medium" : ""}`}>
                     {p.locked && <Lock className="h-3 w-3 text-amber-600" />}
                     {p.name}
@@ -130,7 +132,7 @@ export function PortListSection({
                     transform: "translateY(-50%)",
                   }}
                 />
-                <div className="text-xs text-right min-w-0 flex-1">
+                <div className={`text-xs text-right min-w-0 flex-1 ${hideLabels ? "hidden" : ""}`}>
                   <div className={`truncate flex items-center justify-end gap-1 ${p.locked ? "opacity-90 font-medium" : ""}`}>
                     {p.name}
                     {p.type === "object" && p.customSchema && (

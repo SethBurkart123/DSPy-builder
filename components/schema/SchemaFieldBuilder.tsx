@@ -25,11 +25,12 @@ import { useFlowSchemas } from "@/lib/useFlowSchemas";
 import { filterPythonIdentifier, getPythonIdentifierError } from "@/lib/python-identifier-utils";
 import { SchemaSelector } from "./SchemaSelector";
 import { typeIcon, typeLabel } from "@/components/flowbuilder/typeDisplay";
+import { LiteralValuesEditor } from "@/components/common/LiteralValuesEditor";
 
 const getTypeIcon = (type: PortType) => typeIcon(type, "h-3 w-3");
 const getTypeLabel = (type: PortType) => typeLabel(type);
 
-const ALL_TYPES: PortType[] = ["string", "int", "float", "boolean", "array", "object"];
+const ALL_TYPES: PortType[] = ["string", "int", "float", "boolean", "literal", "custom", "array", "object"];
 
 interface SchemaFieldBuilderProps {
   field: SchemaField;
@@ -63,6 +64,10 @@ export function SchemaFieldBuilder({
   const { getSchema, wouldIntroduceCycle } = useFlowSchemas(flowId);
   const [schemaSelectorOpen, setSchemaSelectorOpen] = useState(false);
   const [selectorContext, setSelectorContext] = useState<'object' | 'arrayItem' | null>(null);
+  // Literal editor local state (per field UI instance)
+  const [literalPending, setLiteralPending] = useState("");
+  const [literalEditIndex, setLiteralEditIndex] = useState<number | null>(null);
+  const [literalEditValue, setLiteralEditValue] = useState<string>("");
 
   const updateField = (updates: Partial<SchemaField>) => {
     onUpdate({ ...field, ...updates });
@@ -94,9 +99,17 @@ export function SchemaFieldBuilder({
     if (newType !== "array") {
       updates.arrayItemType = undefined;
       (updates as any).arrayItemSchemaId = undefined;
+      (updates as any).arrayItemCustomType = undefined;
     }
     if (newType !== "object") {
       (updates as any).objectSchemaId = undefined;
+    }
+    if (newType !== "custom") {
+      (updates as any).customType = undefined;
+    }
+    if (newType !== "literal") {
+      (updates as any).literalKind = undefined;
+      (updates as any).literalValues = undefined;
     }
     
     updateField(updates);
@@ -145,7 +158,7 @@ export function SchemaFieldBuilder({
               {ALL_TYPES.filter(t => t !== "array").map((type) => (
                 <DropdownMenuItem
                   key={type}
-                  onClick={() => updateField({ arrayItemType: type, arrayItemSchemaId: undefined } as any)}
+                  onClick={() => updateField({ arrayItemType: type, arrayItemSchemaId: undefined, arrayItemCustomType: undefined } as any)}
                   className="flex items-center gap-2"
                 >
                   {getTypeIcon(type)}
@@ -168,6 +181,17 @@ export function SchemaFieldBuilder({
                 <Plus className="h-3 w-3" />
               </Button>
             )}
+          </div>
+        )}
+        {field.arrayItemType === "custom" && (
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground">Custom item type:</Label>
+            <Input
+              className="h-7 text-xs"
+              placeholder="e.g., Dict[str, Any]"
+              value={field.arrayItemCustomType || ''}
+              onChange={(e) => updateField({ arrayItemCustomType: e.target.value })}
+            />
           </div>
         )}
         {field.arrayItemSchemaId && renderNestedFields(getSchema(field.arrayItemSchemaId) || undefined)}
@@ -201,6 +225,40 @@ export function SchemaFieldBuilder({
             {renderNestedFields(getSchema(field.objectSchemaId) || undefined)}
           </div>
         )}
+      </div>
+    );
+  };
+
+  const renderCustomConfig = () => {
+    if (field.type !== 'custom') return null;
+    return (
+      <div className="ml-4 mt-2 space-y-2 border-l-2 border-border pl-3">
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Custom type:</Label>
+          <Input
+            className="h-7 text-xs"
+            placeholder="e.g., Dict[str, Any] or MyType"
+            value={field.customType || ''}
+            onChange={(e) => updateField({ customType: e.target.value })}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const renderLiteralConfig = () => {
+    if (field.type !== 'literal') return null;
+    return (
+      <div className="ml-4 mt-2 space-y-2 border-l-2 border-border pl-3">
+        <LiteralValuesEditor
+          kind={field.literalKind as any}
+          values={field.literalValues}
+          onKindChange={(k) => updateField({ literalKind: k, literalValues: [] })}
+          onChange={(vals) => updateField({ literalValues: vals })}
+          baseKindLabel="Base kind"
+          valuesLabel="Allowed values"
+          compact
+        />
       </div>
     );
   };
@@ -253,14 +311,14 @@ export function SchemaFieldBuilder({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <label className="flex items-center gap-1 text-xs text-foreground">
+              <label className="flex items-center gap-1 text-xs text-foreground select-none" title="If checked, this field is optional (required=False)">
                 <input
                   type="checkbox"
-                  checked={field.required}
-                  onChange={(e) => updateField({ required: e.target.checked })}
+                  checked={!field.required}
+                  onChange={(e) => updateField({ required: !e.target.checked })}
                   className="rounded accent-current"
                 />
-                Required
+                Optional
               </label>
 
               <Button 
@@ -288,6 +346,8 @@ export function SchemaFieldBuilder({
             {/* Type-specific configuration */}
             {renderArrayConfig()}
             {renderObjectConfig()}
+            {renderCustomConfig()}
+            {renderLiteralConfig()}
           </div>
         </div>
       </div>

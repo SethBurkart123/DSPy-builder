@@ -6,6 +6,8 @@ export type PortType =
   | "int"
   | "object"
   | "array"
+  | "literal"
+  | "custom"
   | "llm"
   | "tool";
 
@@ -17,8 +19,20 @@ export type Port = {
   customSchema?: CustomSchema;
   arrayItemType?: PortType;
   arrayItemSchema?: CustomSchema;
+  // Free-form custom type for ports
+  customType?: string;
+  // For arrays of custom types
+  arrayItemCustomType?: string;
+  // For arrays of literal types
+  arrayItemLiteralKind?: "string" | "int" | "float" | "boolean";
+  arrayItemLiteralValues?: (string | number | boolean)[];
+  // Literal support for ports (single or multiple allowed values)
+  literalKind?: "string" | "int" | "float" | "boolean";
+  literalValues?: (string | number | boolean)[];
   description?: string;
   locked?: boolean;
+  // Optionality for inputs (affects DSPy required=False)
+  optional?: boolean;
 };
 
 // Schema definition interfaces
@@ -32,6 +46,13 @@ export interface SchemaField {
   // Store references by id instead of embedding full schemas
   arrayItemSchemaId?: string;
   objectSchemaId?: string;
+  // Free-form custom type
+  customType?: string;
+  // For arrays of custom types
+  arrayItemCustomType?: string;
+  // Literal support
+  literalKind?: "string" | "int" | "float" | "boolean";
+  literalValues?: (string | number | boolean)[];
 }
 
 export interface CustomSchema {
@@ -99,6 +120,8 @@ export const PORT_COLORS: Record<PortType, string> = {
   int: "bg-fuchsia-500",
   object: "bg-purple-500",
   array: "bg-cyan-500",
+  literal: "bg-sky-500",
+  custom: "bg-stone-500",
   llm: "bg-rose-500",
   tool: "bg-slate-500",
 };
@@ -111,6 +134,8 @@ export const PORT_HEX: Record<PortType, string> = {
   int: "#d946ef", // fuchsia-500
   object: "#a855f7", // purple-500
   array: "#06b6d4", // cyan-500
+  literal: "#0ea5e9", // sky-500
+  custom: "#78716c", // stone-500
   llm: "#f43f5e", // rose-500
   tool: "#64748b", // slate-500
 };

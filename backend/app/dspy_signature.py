@@ -50,16 +50,15 @@ def build_signature(signature_name: str, description: str | None, inputs_schema:
         if f.get("type") in {"llm", "tool"}:
             continue
         name = f["name"]
-        annotations[name] = py_type(f.get("type", "string"))
+        annotations[name] = py_type(f.get("type", "string"), f.get("arrayItemType"))
         attrs[name] = getattr(__import__("dspy"), "InputField")(desc=f.get("description") or "")
 
     # Outputs
     for f in outputs_schema:
         name = f["name"]
-        annotations[name] = py_type(f.get("type", "string"))
+        annotations[name] = py_type(f.get("type", "string"), f.get("arrayItemType"))
         attrs[name] = getattr(__import__("dspy"), "OutputField")(desc=f.get("description") or "")
 
     attrs["__annotations__"] = annotations
     Sig = type(signature_name, (getattr(__import__("dspy"), "Signature"),), attrs)
     return Sig
-

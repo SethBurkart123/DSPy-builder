@@ -23,9 +23,10 @@ import { CodeEditor } from "@/components/code/CodeEditor";
 import { SchemaCreator } from "@/components/schema/SchemaCreator";
 import { SchemaSelector } from "@/components/schema/SchemaSelector";
 import { generateDSPyCode } from "@/lib/generate-dspy";
+import { LiteralValuesEditor } from "@/components/common/LiteralValuesEditor";
 
 // Exclude internal-only 'llm' from user type dropdowns
-const ALL_TYPES: PortType[] = ["string", "string[]", "boolean", "float", "int", "array", "object"];
+const ALL_TYPES: PortType[] = ["string", "string[]", "boolean", "float", "int", "literal", "custom", "array", "object"];
 
 import { typeIcon, typeLabel } from "./typeDisplay";
 const getTypeIcon = (type: PortType) => typeIcon(type, "h-3 w-3");
@@ -56,6 +57,7 @@ export default function NodeInspector({
   const [editingSchema, setEditingSchema] = useState<CustomSchema | null>(null);
   const [schemaSelectorOpen, setSchemaSelectorOpen] = useState(false);
   const [editingPortIndex, setEditingPortIndex] = useState<{ direction: "inputs" | "outputs", index: number } | null>(null);
+  const [schemaSelectContext, setSchemaSelectContext] = useState<'portObject' | 'arrayItem' | null>(null);
   const [showCode, setShowCode] = useState(false);
   
   // Simple client-side validation for custom Python tools
@@ -103,16 +105,26 @@ export default function NodeInspector({
 
   const handleSchemaSelected = (schema: CustomSchema) => {
     if (editingPortIndex) {
-      updatePort(editingPortIndex.direction, editingPortIndex.index, { 
-        type: "object", 
-        customSchema: schema 
-      });
+      if (schemaSelectContext === 'arrayItem') {
+        updatePort(editingPortIndex.direction, editingPortIndex.index, {
+          type: 'array',
+          arrayItemType: 'object',
+          arrayItemSchema: schema,
+        });
+      } else {
+        updatePort(editingPortIndex.direction, editingPortIndex.index, {
+          type: 'object',
+          customSchema: schema,
+        });
+      }
       setEditingPortIndex(null);
+      setSchemaSelectContext(null);
     }
   };
 
   const handleSelectExistingSchema = (direction: "inputs" | "outputs", idx: number) => {
     setEditingPortIndex({ direction, index: idx });
+    setSchemaSelectContext('portObject');
     setSchemaSelectorOpen(true);
   };
 
@@ -133,7 +145,13 @@ export default function NodeInspector({
                 type, 
                 customSchema: undefined,
                 arrayItemType: undefined,
-                arrayItemSchema: undefined 
+                arrayItemSchema: undefined,
+                arrayItemCustomType: undefined,
+                customType: undefined,
+                literalKind: undefined,
+                literalValues: undefined,
+                arrayItemLiteralKind: undefined,
+                arrayItemLiteralValues: undefined,
               })}
               className="flex items-center gap-2"
             >
@@ -162,6 +180,103 @@ export default function NodeInspector({
         </DropdownMenuContent>
       </DropdownMenu>
     );
+  };
+
+  const renderPortTypeConfig = (p: Port, direction: "inputs" | "outputs", idx: number) => {
+    // Array item configuration
+    if (p.type === 'array') {
+      return (
+        <div className="ml-4 mt-2 space-y-2 border-l-2 border-border pl-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">Array contains:</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  {p.arrayItemType ? getTypeIcon(p.arrayItemType) : getTypeIcon('string')}
+                  <span className="ml-1">{p.arrayItemType ? getTypeLabel(p.arrayItemType) : 'Select type'}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {ALL_TYPES.filter(t => t !== 'array').map((type) => (
+                  <DropdownMenuItem key={type} className="flex items-center gap-2" onClick={() => updatePort(direction, idx, { arrayItemType: type, arrayItemSchema: undefined, arrayItemCustomType: undefined, arrayItemLiteralKind: undefined, arrayItemLiteralValues: undefined })}>
+                    {getTypeIcon(type)}
+                    {getTypeLabel(type)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          {p.arrayItemType === 'object' && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">Object schema:</span>
+              <Button variant="outline" size="sm" onClick={() => { setEditingPortIndex({ direction, index: idx }); setSchemaSelectContext('arrayItem'); setSchemaSelectorOpen(true); }}>
+                <Package className="h-3 w-3 mr-1" />
+                {p.arrayItemSchema ? (p.arrayItemSchema.name || 'Unknown') : 'Select schema'}
+              </Button>
+            </div>
+          )}
+          {p.arrayItemType === 'custom' && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">Custom item type:</span>
+              <Input className="h-7 text-xs" placeholder="e.g., Dict[str, Any]" value={p.arrayItemCustomType || ''} onChange={(e) => updatePort(direction, idx, { arrayItemCustomType: e.target.value })} />
+            </div>
+          )}
+          {p.arrayItemType === 'literal' && (
+            <div className="space-y-2">
+              <LiteralValuesEditor
+                kind={p.arrayItemLiteralKind as any}
+                values={p.arrayItemLiteralValues}
+                onKindChange={(k) => updatePort(direction, idx, { arrayItemLiteralKind: k, arrayItemLiteralValues: [] })}
+                onChange={(vals) => updatePort(direction, idx, { arrayItemLiteralValues: vals })}
+                baseKindLabel="Base kind"
+                valuesLabel="Allowed item values"
+                compact
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+    // Object schema config
+    if (p.type === 'object') {
+      return (
+        <div className="ml-4 mt-2 space-y-2 border-l-2 border-border pl-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">Object schema:</span>
+            <Button variant="outline" size="sm" onClick={() => { setEditingPortIndex({ direction, index: idx }); setSchemaSelectContext('portObject'); setSchemaSelectorOpen(true); }}>
+              <Package className="h-3 w-3 mr-1" />
+              {p.customSchema ? (p.customSchema.name || 'Unknown') : 'Select schema'}
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    if (p.type === 'custom') {
+      return (
+        <div className="ml-4 mt-2 space-y-2 border-l-2 border-border pl-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">Custom type:</span>
+            <Input className="h-7 text-xs" placeholder="e.g., Dict[str, Any] or MyType" value={p.customType || ''} onChange={(e) => updatePort(direction, idx, { customType: e.target.value })} />
+          </div>
+        </div>
+      );
+    }
+    if (p.type === 'literal') {
+      return (
+        <div className="ml-4 mt-2 space-y-2 border-l-2 border-border pl-3">
+          <LiteralValuesEditor
+            kind={p.literalKind as any}
+            values={p.literalValues}
+            onKindChange={(k) => updatePort(direction, idx, { literalKind: k, literalValues: [] })}
+            onChange={(vals) => updatePort(direction, idx, { literalValues: vals })}
+            baseKindLabel="Base kind"
+            valuesLabel="Allowed values"
+            compact
+          />
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -289,6 +404,15 @@ export default function NodeInspector({
                      placeholder="Port name"
                    />
                    {renderPortTypeDropdown(p, "inputs", actualIdx)}
+                   <label className="flex items-center gap-1 text-[11px] text-foreground select-none">
+                     <input
+                       type="checkbox"
+                       checked={!!p.optional}
+                       onChange={(e) => updatePort("inputs", actualIdx, { optional: e.target.checked })}
+                       className="rounded accent-current"
+                     />
+                     Optional
+                   </label>
                    <Button 
                      variant="ghost"
                      size="sm"
@@ -307,6 +431,7 @@ export default function NodeInspector({
                       rows={2}
                     />
                   )}
+                  {renderPortTypeConfig(p, "inputs", actualIdx)}
                 </div>
               );
             })}
@@ -341,6 +466,15 @@ export default function NodeInspector({
                       placeholder="Port name"
                     />
                     {renderPortTypeDropdown(p, "outputs", actualIdx)}
+                    <label className="flex items-center gap-1 text-[11px] text-foreground select-none">
+                      <input
+                        type="checkbox"
+                        checked={!!p.optional}
+                        onChange={(e) => updatePort("outputs", actualIdx, { optional: e.target.checked })}
+                        className="rounded accent-current"
+                      />
+                      Optional
+                    </label>
                     <Button 
                       variant="ghost"
                       size="sm"
@@ -357,6 +491,7 @@ export default function NodeInspector({
                     placeholder="Description (optional)"
                     rows={2}
                   />
+                  {renderPortTypeConfig(p, "outputs", actualIdx)}
                 </div>
               );
             })}

@@ -127,6 +127,12 @@
   display: none !important;
 }
 
+/* Override ReactFlow's automatic height calculation for tool nodes */
+.react-flow__renderer .react-flow__node:has(.tool-node) {
+  height: auto !important;
+  min-height: unset !important;
+}
+
 .monaco-editor, .monaco-diff-editor, .monaco-component {
   --vscode-focusBorder: #ffffff00 !important
 }

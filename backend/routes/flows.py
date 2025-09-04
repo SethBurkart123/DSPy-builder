@@ -13,6 +13,10 @@ from app.schemas import (
     FlowSchemaOut,
     NodeRunIn,
     NodeRunOut,
+    FlowExportBundle,
+    FlowImportResult,
+    FlowPreviewIn,
+    FlowPreviewOut,
 )
 from app.utils import now_iso, new_id, slugify
 
@@ -400,3 +404,163 @@ async def run_node_stream(flow_id: str, request: Request):
 
     # application/x-ndjson is convenient for line-delimited JSON
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+# ---- Import/Export ----
+
+@router.get("/{flow_id}/export", response_model=FlowExportBundle)
+def export_flow_bundle(flow_id: str):
+    import json
+    with get_connection() as conn:
+        # Flow
+        cur = conn.execute(
+            "SELECT id, name, slug, created_at, updated_at FROM flows WHERE id = ?",
+            (flow_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Flow not found")
+        flow = FlowOut(**dict(row))
+
+        # State (optional)
+        cur = conn.execute(
+            "SELECT data FROM flow_states WHERE flow_id = ?",
+            (flow_id,),
+        )
+        srow = cur.fetchone()
+        state = json.loads(srow["data"]) if srow else {"nodes": [], "edges": []}
+
+        # Schemas
+        cur = conn.execute(
+            "SELECT id, flow_id, name, description, fields, created_at, updated_at FROM flow_schemas WHERE flow_id = ? ORDER BY created_at ASC",
+            (flow_id,),
+        )
+        schemas: list[FlowSchemaOut] = []
+        for r in cur.fetchall():
+            schemas.append(
+                FlowSchemaOut(
+                    id=r["id"],
+                    flow_id=r["flow_id"],
+                    name=r["name"],
+                    description=r["description"],
+                    fields=json.loads(r["fields"]),
+                    created_at=r["created_at"],
+                    updated_at=r["updated_at"],
+                )
+            )
+
+    return FlowExportBundle(version=1, flow=flow, state=state, schemas=schemas)
+
+
+@router.post("/import", response_model=FlowImportResult)
+def import_flow_bundle(payload: FlowExportBundle):
+    import json
+    # Create flow (new id and slug)
+    name = payload.flow.name
+    flow_id = new_id()
+    created_at = updated_at = now_iso()
+    base_slug = slugify(name)
+    slug = _unique_slug(base_slug)
+
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO flows (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (flow_id, name, slug, created_at, updated_at),
+        )
+
+        # Re-map schema ids while preserving internal references
+        id_map: dict[str, str] = {}
+        for s in payload.schemas:
+            id_map[s.id] = new_id()
+
+        for s in payload.schemas:
+            new_schema_id = id_map[s.id]
+            # Rewrite field references to new schema ids
+            new_fields: list[dict] = []
+            for f in s.fields:
+                # f may be dict or pydantic model
+                fd = f if isinstance(f, dict) else f.dict()  # type: ignore[attr-defined]
+                # Repoint nested schema references, if present
+                obj_id = fd.get("objectSchemaId")
+                if obj_id and obj_id in id_map:
+                    fd["objectSchemaId"] = id_map[obj_id]
+                arr_id = fd.get("arrayItemSchemaId")
+                if arr_id and arr_id in id_map:
+                    fd["arrayItemSchemaId"] = id_map[arr_id]
+                new_fields.append(fd)
+
+            now = now_iso()
+            conn.execute(
+                "INSERT INTO flow_schemas (id, flow_id, name, description, fields, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    new_schema_id,
+                    flow_id,
+                    s.name,
+                    s.description,
+                    json.dumps(new_fields),
+                    now,
+                    now,
+                ),
+            )
+
+        # Save state (strip ephemeral runtime if present)
+        state = payload.state or {"nodes": [], "edges": []}
+        try:
+            nodes = state.get("nodes") or []
+            for n in nodes:
+                data = n.get("data") if isinstance(n, dict) else None
+                if isinstance(data, dict):
+                    data.pop("runtime", None)
+        except Exception:
+            # If structure is unexpected, store as-is
+            pass
+
+        conn.execute(
+            "INSERT INTO flow_states (flow_id, data, updated_at) VALUES (?, ?, ?)",
+            (flow_id, json.dumps(state), updated_at),
+        )
+
+        conn.commit()
+
+    flow = FlowOut(id=flow_id, name=name, slug=slug, created_at=created_at, updated_at=updated_at)
+    return FlowImportResult(flow=flow)
+
+
+# ---- Flow Previews ----
+
+@router.get("/{flow_id}/preview", response_model=FlowPreviewOut)
+def get_flow_preview(flow_id: str):
+    with get_connection() as conn:
+        cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Flow not found")
+        cur = conn.execute(
+            "SELECT image, updated_at FROM flow_previews WHERE flow_id = ?",
+            (flow_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Preview not found")
+        return FlowPreviewOut(flow_id=flow_id, image=row["image"], updated_at=row["updated_at"])
+
+
+@router.put("/{flow_id}/preview", response_model=FlowPreviewOut)
+def upsert_flow_preview(flow_id: str, payload: FlowPreviewIn):
+    updated_at = now_iso()
+    with get_connection() as conn:
+        cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Flow not found")
+        cur = conn.execute("SELECT 1 FROM flow_previews WHERE flow_id = ?", (flow_id,))
+        if cur.fetchone():
+            conn.execute(
+                "UPDATE flow_previews SET image = ?, updated_at = ? WHERE flow_id = ?",
+                (payload.image, updated_at, flow_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO flow_previews (flow_id, image, updated_at) VALUES (?, ?, ?)",
+                (flow_id, payload.image, updated_at),
+            )
+        conn.commit()
+    return FlowPreviewOut(flow_id=flow_id, image=payload.image, updated_at=updated_at)

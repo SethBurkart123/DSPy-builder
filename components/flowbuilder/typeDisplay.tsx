@@ -22,6 +22,10 @@ export function typeLabel(t: PortType | string): string {
       return "Custom Object";
     case "array":
       return "Array";
+    case "literal":
+      return "Literal";
+    case "custom":
+      return "Custom Type";
     case "llm":
       return "LLM Provider";
     case "tool":
@@ -47,6 +51,10 @@ export function typeIcon(t: PortType | string, className = "h-3 w-3"): ReactNode
       return <Package className={className} />;
     case "array":
       return <Layers className={className} />;
+    case "literal":
+      return <Hash className={className} />;
+    case "custom":
+      return <Type className={className} />;
     case "llm":
       return <Brain className={className} />;
     case "tool":
