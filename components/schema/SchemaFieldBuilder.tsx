@@ -220,7 +220,7 @@ export function SchemaFieldBuilder({
           <div className="flex-1 space-y-3">
             {/* Field name and type */}
             <div className="flex items-center gap-2">
-              <div className="flex-1 space-y-1">
+              <div className="flex-1 space-y-1 relative">
                 <Input
                   value={field.name}
                   onChange={(e) => {
@@ -228,11 +228,8 @@ export function SchemaFieldBuilder({
                     updateField({ name: filtered });
                   }}
                   placeholder="Field name (e.g., user_name, is_active)"
-                  className={getPythonIdentifierError(field.name) ? "border-destructive" : ""}
+                  className={getPythonIdentifierError(field.name) ? "border-destructive" : "border-border"}
                 />
-                {getPythonIdentifierError(field.name) && (
-                  <p className="text-xs text-destructive">{getPythonIdentifierError(field.name)}</p>
-                )}
               </div>
               
               <DropdownMenu>
