@@ -1,4 +1,4 @@
-import type { Node } from "reactflow";
+import type { Node } from "@xyflow/react";
 import type { NodeKind, PortType, TypedNodeData, Port } from "@/components/flowbuilder/types";
 import { PORT_HEX } from "@/components/flowbuilder/types";
 

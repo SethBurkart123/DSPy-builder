@@ -1,11 +1,12 @@
 "use client";
 
 import { memo, useEffect, useState } from "react";
-import { NodeProps, useUpdateNodeInternals } from "reactflow";
+import { NodeProps, useUpdateNodeInternals } from "@xyflow/react";
 import { type TypedNodeData } from "./types";
 import { getNodeDefinition } from "@/lib/node-def";
 import { HEADER_HEIGHT, PORT_ROW_HEIGHT } from "@/lib/flow-utils";
 import { PortListSection, ControlGroupSection } from "./sections";
+import { Loader2 } from "lucide-react";
 
 function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
   const [isDragHovering, setIsDragHovering] = useState(false);
@@ -30,11 +31,18 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
   const minTotalHeight = headerHeight + minContentHeight + baseContentPadding;
 
   const status = data.runtime?.status;
-  const boxShadow = status === 'running'
-    ? '0 0 14px rgba(244,63,94,0.6)'
-    : status === 'done'
-    ? '0 0 12px rgba(16,185,129,0.5)'
-    : undefined;
+  let glowColor = '';
+  if (status === 'running') {
+    // Tools glow amber when running; other nodes glow rose
+    if (data.kind.startsWith('tool_')) glowColor = 'rgba(245,158,11,0.55)'; // amber-500
+    else glowColor = 'rgba(244,63,94,0.60)'; // rose-500
+  } else if (status === 'done') {
+    glowColor = 'rgba(16,185,129,0.55)'; // emerald-500
+  } else if (status === 'error') {
+    glowColor = 'rgba(239,68,68,0.55)'; // red-500
+  }
+
+  const boxShadow = glowColor ? `0 0 14px ${glowColor}` : undefined;
 
   return (
     <div 
@@ -45,10 +53,15 @@ function TypedNodeComponent({ data, selected, id }: NodeProps<TypedNodeData>) {
     >
       <div 
         className={`w-[240px] rounded-lg border bg-card text-card-foreground shadow ${selected ? "outline-primary/50 outline-2" : ""} relative flex flex-col`}
-        style={{ minHeight: `${minTotalHeight}px`, boxShadow }}
+        style={{ minHeight: `${minTotalHeight}px`, boxShadow, animation: status === 'running' ? 'node-pulse 1.4s ease-in-out infinite' as any : undefined }}
       >
-        <div className="flex items-center justify-between rounded-t-lg border-b bg-muted/50 px-3 py-2 pb-[14px]">
+        <div className="flex items-center justify-between rounded-t-lg border-b bg-muted/50 px-3 py-2 pb-[14px] relative">
           <div className="text-xs font-semibold truncate">{data.title}</div>
+          {status === 'running' && (
+            <div className="absolute right-2 top-2 text-[10px] rounded-full">
+              <Loader2 className="h-3.5 w-3.5 animate-spin opacity-80" />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3 p-3 flex-1">

@@ -1,7 +1,7 @@
 "use client";
 
 import { Toaster } from "react-hot-toast";
-import { useTheme } from "@/components/providers/ThemeProvider";
+import { useTheme } from "next-themes";
 
 export function ToasterClient() {
   const { resolvedTheme } = useTheme();

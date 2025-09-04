@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "@/components/providers/ThemeProvider";
+import { useTheme } from "next-themes";
 
 // Dynamically import Monaco Editor to ensure client-side rendering only
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {

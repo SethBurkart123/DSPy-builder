@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Node } from "reactflow";
+import type { Node } from "@xyflow/react";
 import { type Port, type PortType, type TypedNodeData, type CustomSchema } from "./types";
 import { 
   Plus, 
@@ -169,7 +169,7 @@ export default function NodeInspector({
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-base font-semibold truncate">{title}</h3>
         <div className="flex items-center gap-2">
-          {(data?.kind === 'predict' || data?.kind === 'chainofthought') && (
+          {(data?.kind === 'predict' || data?.kind === 'chainofthought' || data?.kind === 'agent') && (
             <Button size="sm" onClick={() => onRunNode?.(node!.id)}>Run</Button>
           )}
           {(data && !(data.kind === 'input' || data.kind === 'output' || data.kind === 'llm')) && (

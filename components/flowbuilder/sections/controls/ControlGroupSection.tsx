@@ -1,6 +1,6 @@
 "use client";
 
-import { Handle, Position } from "reactflow";
+import { Handle, Position } from "@xyflow/react";
 import type { TypedNodeData, PortType } from "@/components/flowbuilder/types";
 import type { ControlSpec } from "@/lib/node-def";
 import { handleStyleForPort, HANDLE_SIZE, NODE_GRID_PADDING_X } from "@/lib/flow-utils";

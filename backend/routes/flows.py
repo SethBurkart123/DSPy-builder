@@ -1,5 +1,6 @@
-from typing import List
-from fastapi import APIRouter, HTTPException
+from typing import AsyncGenerator, List
+from fastapi import APIRouter, HTTPException, Request
+from starlette.responses import StreamingResponse
 import sqlite3
 
 from app.db import get_connection, init_db
@@ -337,3 +338,84 @@ def run_node(flow_id: str, payload: NodeRunIn):
         return NodeRunOut(**data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Invalid runner output: {e}")
+
+
+@router.post("/{flow_id}/run/node/stream")
+async def run_node_stream(flow_id: str, request: Request):
+    """
+    Execute a node and stream structured JSON events (one per line) as the run progresses.
+
+    This streams the stdout of a subprocess running `app.node_runner_stream` which emits
+    JSON lines using a DSPy callback and tool wrappers.
+    """
+    ensure_db()
+    with get_connection() as conn:
+        cur = conn.execute("SELECT 1 FROM flows WHERE id = ?", (flow_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Flow not found")
+
+    # Read raw JSON body (pass through to runner)
+    try:
+        payload_bytes = await request.body()
+        # lightweight validation: ensure it is JSON
+        _ = __import__("json").loads(payload_bytes.decode("utf-8") or "{}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON body: {e}")
+
+    import asyncio
+    import subprocess
+    import sys
+    import os as _os
+    from pathlib import Path
+
+    provider_env = dict(_os.environ)
+    workdir = Path(__file__).resolve().parents[1]
+
+    # Start subprocess with pipes
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "app.node_runner_stream",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(workdir),
+            env=provider_env,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Runner failed to start: {e}")
+
+    # Send payload
+    assert proc.stdin is not None
+    proc.stdin.write(payload_bytes)
+    await proc.stdin.drain()
+    proc.stdin.close()
+
+    async def event_stream() -> AsyncGenerator[bytes, None]:
+        assert proc.stdout is not None
+        # Stream stdout lines immediately as they arrive
+        try:
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                # Each line is a JSON object (utf-8)
+                yield line
+        except __import__("asyncio").CancelledError:
+            # Client disconnected; terminate the child process
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+            except Exception:
+                pass
+            raise
+        finally:
+            # Ensure process exits
+            try:
+                await proc.wait()
+            except Exception:
+                pass
+
+    # application/x-ndjson is convenient for line-delimited JSON
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")

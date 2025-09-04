@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Handle, Position } from "reactflow";
+import { Handle, Position } from "@xyflow/react";
 import type { TypedNodeData, PortType } from "@/components/flowbuilder/types";
 import { Lock } from "lucide-react";
 import { handleStyleForPort, HANDLE_SIZE, NODE_GRID_PADDING_X, genId } from "@/lib/flow-utils";

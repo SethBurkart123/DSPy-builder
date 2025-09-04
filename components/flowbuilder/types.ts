@@ -80,6 +80,14 @@ export type TypedNodeData = {
     status?: "idle" | "running" | "done" | "error";
     outputs?: Record<string, any>;
     error?: string;
+    // Live stream: latest active step (LM/tool/module)
+    current?: {
+      kind: "lm" | "tool" | "module" | "run";
+      label?: string;
+      startedAt?: number;
+    } | null;
+    // Optional event history for richer UIs
+    events?: { ts?: number; event: string; [k: string]: any }[];
   };
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { ConnectionLineComponentProps, getBezierPath, Position } from "reactflow";
+import { ConnectionLineComponentProps, getBezierPath, Position } from "@xyflow/react";
 import type { Port } from "./types";
 import { edgeStyleForType } from "@/lib/flow-utils";
 

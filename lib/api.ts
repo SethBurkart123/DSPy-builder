@@ -39,7 +39,7 @@ export type ApiFlowSchema = {
   updated_at: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const BASE = `${API_BASE}/api`;
 
 async function http<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -128,4 +128,27 @@ export const api = {
       `${BASE}/flows/${flowId}/run/node`,
       { method: "POST", body: JSON.stringify(data) }
     ),
+  runNodeStream: (
+    flowId: string,
+    data: {
+      node_id?: string;
+      node_kind: string;
+      node_title?: string;
+      node_description?: string;
+      inputs_schema: { name: string; type: string; description?: string }[];
+      outputs_schema: { name: string; type: string; description?: string }[];
+      inputs_values: Record<string, any>;
+      model?: string;
+      lm_params?: Record<string, any>;
+      tools_code?: string[];
+    }
+  ) => fetch(
+    `${BASE}/flows/${flowId}/run/node/stream`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    }
+  ),
 };
