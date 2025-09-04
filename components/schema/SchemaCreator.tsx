@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { CodeEditor } from "@/components/code/CodeEditor";
 import { Label } from "@/components/ui/label";
 import { filterPythonIdentifier, getPythonIdentifierError } from "@/lib/python-identifier-utils";
 
@@ -288,9 +289,14 @@ export function SchemaCreator({
 
               <div className="h-full overflow-y-auto p-4">
                 {showPreview ? (
-                  <pre className="text-xs whitespace-pre-wrap font-mono text-foreground">
-                    {generateDSPyCode()}
-                  </pre>
+                  <CodeEditor
+                    value={exportToDSPy({ id: "temp", name, description, fields })}
+                    onChange={() => {}}
+                    language="python"
+                    height={520}
+                    readOnly
+                    options={{ fontSize: 12 }}
+                  />
                 ) : (
                   <div className="space-y-3">
                     {name && (

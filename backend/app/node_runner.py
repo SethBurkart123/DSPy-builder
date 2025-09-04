@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from typing import Any
+import ast
 import dspy
 
 def _py_type(t: str, array_item_type: str | None = None):
@@ -32,6 +33,9 @@ def _py_type(t: str, array_item_type: str | None = None):
     # internal-only type: treat as string for annotation
     if t == "llm":
         return str
+    if t == "tool":
+        # not part of signature (skipped), but default to object
+        return dict
     return str
 
 
@@ -44,7 +48,7 @@ def build_signature(signature_name: str, description: str | None, inputs_schema:
 
     # inputs
     for f in inputs_schema:
-        if f.get("type") == "llm":
+        if f.get("type") in {"llm", "tool"}:
             continue  # not part of signature
         name = f["name"]
         annotations[name] = _py_type(f.get("type", "string"))
@@ -70,6 +74,7 @@ def run(payload: dict) -> dict:
     inputs_values = payload.get("inputs_values") or {}
     model = payload.get("model")
     lm_params = payload.get("lm_params") or {}
+    tools_code = payload.get("tools_code") or []
 
     try:
         Sig = build_signature(title.replace(" ", "_"), desc, inputs_schema, outputs_schema)
@@ -82,6 +87,37 @@ def run(payload: dict) -> dict:
 
         if kind == "chainofthought":
             module = dspy.ChainOfThought(Sig)
+        elif kind == "agent":
+            # Build tools by executing provided code strings and collecting callables
+            tool_funcs = []
+            errors: list[str] = []
+            for idx, code in enumerate(tools_code):
+                # Basic structure validation via AST
+                try:
+                    tree = ast.parse(code)
+                except Exception as e:
+                    errors.append(f"Tool #{idx+1} parse error: {e}")
+                    continue
+                has_func = any(isinstance(n, ast.FunctionDef) for n in tree.body)
+                if not has_func:
+                    errors.append(f"Tool #{idx+1} must define at least one function (def ...)")
+                    continue
+                try:
+                    ns: dict[str, Any] = {"dspy": dspy}
+                    exec(compile(tree, filename=f"<tool_{idx+1}>", mode="exec"), ns, ns)
+                    fns = [v for k, v in ns.items() if callable(v) and not k.startswith("__")]
+                    if not fns:
+                        errors.append(f"Tool #{idx+1} did not define any callable functions")
+                        continue
+                    tool_funcs.append(fns[-1])
+                except Exception as e:
+                    errors.append(f"Tool #{idx+1} execution error: {e}")
+                    continue
+            if errors:
+                return {"error": "; ".join(errors)}
+            if not tool_funcs:
+                return {"error": "Agent requires at least one valid tool"}
+            module = dspy.ReAct(Sig, tools=tool_funcs)
         else:
             module = dspy.Predict(Sig)
 
@@ -116,4 +152,3 @@ def main():
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

@@ -69,6 +69,22 @@ function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: st
     outputs = [
       { ...makePort("model", "llm"), description: "LLM provider output", locked: true },
     ];
+  } else if (kind === "agent") {
+    inputs = [
+      { ...makePort("model", "llm"), description: "LLM provider", locked: true },
+      { ...makePort("question", requiredInputType || "string"), locked: true },
+      { ...makePort("tools", "tool"), description: "Attach tool nodes here (multi-input)", locked: true },
+    ];
+    outputs = [makePort("answer", "string")];
+  } else if (kind === "tool_wikipedia") {
+    inputs = [];
+    outputs = [{ ...makePort("tool", "tool"), description: "Wikipedia search tool", locked: true }];
+  } else if (kind === "tool_math") {
+    inputs = [];
+    outputs = [{ ...makePort("tool", "tool"), description: "Math evaluation tool", locked: true }];
+  } else if (kind === "tool_python") {
+    inputs = [];
+    outputs = [{ ...makePort("tool", "tool"), description: "Custom Python tool", locked: true }];
   }
 
   return {
@@ -80,7 +96,8 @@ function makeNode(kind: NodeKind, position: { x: number; y: number }, title?: st
       kind, 
       inputs, 
       outputs,
-      llm: (kind === 'llm' || kind === 'predict' || kind === 'chainofthought') ? { model: 'gemini/gemini-2.5-flash' } : undefined,
+      llm: (kind === 'llm' || kind === 'predict' || kind === 'chainofthought' || kind === 'agent') ? { model: 'gemini/gemini-2.5-flash' } : undefined,
+      values: (kind === 'tool_python') ? { code: "def my_tool(input: str):\n    \"\"\"Implement your tool. Replace name/signature as needed.\n    \"\"\"\n    # TODO: implement\n    return input\n" } : undefined,
     },
   };
 }
@@ -229,7 +246,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
             // Do not allow adding inputs to the global input node
             if (node.data.kind === 'input') return node;
             const newPort: Port = {
-              id: `in-${dropzoneId}`,
+              id: dropzoneId,
               name: `input-${(node.data.inputs?.length ?? 0) + 1}`,
               type: portType,
               description: "",
@@ -457,6 +474,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     }
     for (const p of node.data.inputs) {
       if (p.type === 'llm' && p.name === 'model') continue;
+      if (p.type === 'tool') continue; // special multi-input handled separately
       // find incoming
       const edge = edges.find(e => e.target === node.id && e.targetHandle === `in-${p.id}`);
       if (edge) {
@@ -486,6 +504,35 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     return { values, model };
   }
 
+  // Build list of tool function sources from all edges into the special 'tools' input
+  function collectToolsForNode(node: Node<TypedNodeData>): { codes: string[]; error?: string } {
+    if (node.data.kind !== 'agent') return { codes: [] };
+    const toolsPort = node.data.inputs.find(p => p.type === 'tool' && p.name === 'tools');
+    if (!toolsPort) return { codes: [] };
+    const incoming = edges.filter(e => e.target === node.id && e.targetHandle === `in-${toolsPort.id}`);
+    const codes: string[] = [];
+    for (const e of incoming) {
+      const src = nodes.find(n => n.id === e.source);
+      if (!src) return { codes, error: 'Missing tool source node' };
+      if (src.data.kind === 'tool_wikipedia') {
+        codes.push(
+          `def search_wikipedia(query: str):\n    results = dspy.ColBERTv2(url=\"http://20.102.90.50:2017/wiki17_abstracts\")(query, k=3)\n    return [x[\"text\"] for x in results]\n`
+        );
+      } else if (src.data.kind === 'tool_math') {
+        codes.push(
+          `def evaluate_math(expression: str):\n    return dspy.PythonInterpreter({}).execute(expression)\n`
+        );
+      } else if (src.data.kind === 'tool_python') {
+        const code = src.data.values?.code || '';
+        if (!code.trim()) return { codes, error: 'Custom Python tool has empty code' };
+        codes.push(code);
+      } else {
+        return { codes, error: `Unsupported tool node: ${src.data.kind}` };
+      }
+    }
+    return { codes };
+  }
+
   async function runNode(nodeId: string) {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
@@ -499,10 +546,24 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       return;
     }
 
-    const inputsSchema = node.data.inputs.filter(p => !(p.type === 'llm' && p.name === 'model')).map(p => ({ name: p.name, type: p.type, description: p.description }));
+    const inputsSchema = node.data.inputs
+      .filter(p => !(p.type === 'llm' && p.name === 'model'))
+      .filter(p => p.type !== 'tool')
+      .map(p => ({ name: p.name, type: p.type, description: p.description }));
     const outputsSchema = node.data.outputs.map(p => ({ name: p.name, type: p.type, description: p.description }));
 
     try {
+      let tools_code: string[] | undefined = undefined;
+      if (node.data.kind === 'agent') {
+        const collected = collectToolsForNode(node);
+        if (collected.error) {
+          setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { status: 'error', error: collected.error } } } : n));
+          toast.error(collected.error);
+          return;
+        }
+        tools_code = collected.codes;
+      }
+
       const res = await api.runNode(id, {
         node_kind: node.data.kind,
         node_title: node.data.title,
@@ -512,6 +573,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         inputs_values: resolution.values,
         model: resolution.model,
         lm_params: node.data.llm ? { temperature: node.data.llm.temperature, top_p: node.data.llm.top_p, max_tokens: node.data.llm.max_tokens } : undefined,
+        tools_code,
       });
       if (res.error) {
         setNodes(curr => curr.map(n => n.id === nodeId ? { ...n, data: { ...n.data, runtime: { status: 'error', error: res.error } } } : n));
@@ -536,7 +598,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   }
 
   function isComputeNodeKind(kind: NodeKind) {
-    return kind === 'predict' || kind === 'chainofthought';
+    return kind === 'predict' || kind === 'chainofthought' || kind === 'agent';
   }
 
   function collectDownstream(nodeId: string): Set<string> {

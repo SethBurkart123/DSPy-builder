@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { Type, List, ToggleLeft, Hash, Binary, Package, Layers, Brain } from "lucide-react";
+import { Type, List, ToggleLeft, Hash, Binary, Package, Layers, Brain, Wrench } from "lucide-react";
 import type { PortType } from "./types";
 
 // Shared helpers for displaying PortType labels and icons consistently
@@ -24,6 +24,8 @@ export function typeLabel(t: PortType | string): string {
       return "Array";
     case "llm":
       return "LLM Provider";
+    case "tool":
+      return "Tool";
     default:
       return String(t);
   }
@@ -47,6 +49,8 @@ export function typeIcon(t: PortType | string, className = "h-3 w-3"): ReactNode
       return <Layers className={className} />;
     case "llm":
       return <Brain className={className} />;
+    case "tool":
+      return <Wrench className={className} />;
     default:
       return <Type className={className} />;
   }

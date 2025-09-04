@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Package, Edit, Trash2, Code, Search, Plus } from "lucide-react";
 import { CustomSchema } from "@/components/flowbuilder/types";
 import { useFlowSchemas } from "@/lib/useFlowSchemas";
+import { CodeEditor } from "@/components/code/CodeEditor";
 import { typeIcon, typeLabel } from "@/components/flowbuilder/typeDisplay";
 import {
   Dialog,
@@ -265,11 +266,14 @@ export function SchemaBrowser({
                 {/* DSPy Code Preview */}
                 <div className="mt-8">
                   <h4 className="text-lg font-medium mb-3">DSPy Code</h4>
-                  <div className="rounded border bg-muted/40 p-4">
-                    <pre className="text-sm whitespace-pre-wrap font-mono text-foreground">
-                      {exportToDSPy(selectedSchema)}
-                    </pre>
-                  </div>
+                  <CodeEditor
+                    value={exportToDSPy(selectedSchema)}
+                    onChange={() => {}}
+                    language="python"
+                    height={360}
+                    readOnly
+                    options={{ fontSize: 12 }}
+                  />
                 </div>
               </div>
             ) : (

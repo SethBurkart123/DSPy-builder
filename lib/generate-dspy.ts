@@ -58,12 +58,16 @@ export function generateDSPyCode(node: TypedNodeData): string {
     for (const p of outputs) lines.push(fieldLine(p, true));
   }
   lines.push("");
-  const moduleCtor = node.kind === "chainofthought" ? "dspy.ChainOfThought" : "dspy.Predict";
+  const moduleCtor = node.kind === "chainofthought" ? "dspy.ChainOfThought" : (node.kind === "agent" ? "dspy.ReAct" : "dspy.Predict");
   const modelExpr = node.llm?.model ? `\"${node.llm.model}\"` : "None";
   lines.push("# Example usage");
   lines.push(`lm = dspy.LM(model=${modelExpr})`);
   lines.push("dspy.settings.configure(lm=lm)");
-  lines.push(`module = ${moduleCtor}(${className})`);
+  if (node.kind === 'agent') {
+    lines.push(`module = ${moduleCtor}(${className}, tools=[...])`);
+  } else {
+    lines.push(`module = ${moduleCtor}(${className})`);
+  }
   const kwargs = inputs.map((p) => `${toIdentifier(p.name)}=...`).join(", ");
   lines.push(`pred = module(${kwargs})`);
   if (outputs.length) {
@@ -72,4 +76,3 @@ export function generateDSPyCode(node: TypedNodeData): string {
   }
   return lines.join("\n");
 }
-

@@ -9,6 +9,10 @@ const OPTIONS: { key: NodeKind; label: string; description?: string }[] = [
   { key: "predict", label: "Predict", description: "Make predictions without reasoning" },
   { key: "llm", label: "LLM Provider", description: "Share a model + params to many nodes" },
   { key: "output", label: "Output", description: "Final sink for pipeline outputs" },
+  { key: "agent", label: "Agent (ReAct)", description: "ReAct agent with tools" },
+  { key: "tool_wikipedia", label: "Tool: Search Wikipedia", description: "Search Wikipedia (ColBERTv2)" },
+  { key: "tool_math", label: "Tool: Evaluate Math", description: "Evaluate math expressions" },
+  { key: "tool_python", label: "Tool: Custom Python", description: "Write a custom Python tool" },
 ];
 
 export default function Palette({

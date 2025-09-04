@@ -14,6 +14,14 @@ export function getNodeTitle(kind: NodeKind): string {
       return "Output";
     case "llm":
       return "LLM Provider";
+    case "agent":
+      return "Agent (ReAct)";
+    case "tool_wikipedia":
+      return "Tool: Search Wikipedia";
+    case "tool_math":
+      return "Tool: Evaluate Math";
+    case "tool_python":
+      return "Tool: Custom Python";
     default:
       return String(kind);
   }
@@ -71,6 +79,9 @@ export function handleStyleForPort(type: PortType): Record<string, any> {
       return { ...base, clipPath: "polygon(20% 0%, 80% 0%, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0% 80%, 0% 20%)" };
     case "llm":
       // Neutral gray block for LLM handles
+      return { ...base, borderRadius: 2, backgroundColor: "#64748b" };
+    case "tool":
+      // Solid slate square for tools
       return { ...base, borderRadius: 2, backgroundColor: "#64748b" };
     default:
       return { ...base, borderRadius: HANDLE_SIZE };

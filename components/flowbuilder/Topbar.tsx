@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, RefreshCcw, CheckCircle2, AlertCircle, Library } from "lucide-react";
+import { ArrowLeft, RefreshCcw, CheckCircle2, AlertCircle, Library, Undo2, Redo2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useState } from "react";
 import KeysManager from "@/components/KeysManager";
@@ -50,12 +50,12 @@ export default function Topbar({ title, status = "idle", onBack, onRunAll, flowI
           </Button>
           {onUndo && (
             <Button variant="outline" size="sm" onClick={onUndo} disabled={canUndo === false} title="Undo (Cmd/Ctrl+Z)">
-              Undo
+              <Undo2 className="h-4 w-4" />
             </Button>
           )}
           {onRedo && (
             <Button variant="outline" size="sm" onClick={onRedo} disabled={canRedo === false} title="Redo (Cmd+Shift+Z / Ctrl+Y)">
-              Redo
+              <Redo2 className="h-4 w-4" />
             </Button>
           )}
           {onRunAll && (

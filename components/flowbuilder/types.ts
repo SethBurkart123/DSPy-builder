@@ -1,4 +1,13 @@
-export type PortType = "string" | "string[]" | "boolean" | "float" | "int" | "object" | "array" | "llm";
+export type PortType =
+  | "string"
+  | "string[]"
+  | "boolean"
+  | "float"
+  | "int"
+  | "object"
+  | "array"
+  | "llm"
+  | "tool";
 
 export type Port = {
   id: string;
@@ -32,7 +41,16 @@ export interface CustomSchema {
   fields: SchemaField[];
 }
 
-export type NodeKind = "chainofthought" | "predict" | "input" | "output" | "llm";
+export type NodeKind =
+  | "chainofthought"
+  | "predict"
+  | "input"
+  | "output"
+  | "llm"
+  | "agent"
+  | "tool_wikipedia"
+  | "tool_math"
+  | "tool_python";
 
 export type TypedNodeData = {
   title: string;
@@ -74,6 +92,7 @@ export const PORT_COLORS: Record<PortType, string> = {
   object: "bg-purple-500",
   array: "bg-cyan-500",
   llm: "bg-rose-500",
+  tool: "bg-slate-500",
 };
 
 export const PORT_HEX: Record<PortType, string> = {
@@ -85,4 +104,5 @@ export const PORT_HEX: Record<PortType, string> = {
   object: "#a855f7", // purple-500
   array: "#06b6d4", // cyan-500
   llm: "#f43f5e", // rose-500
+  tool: "#64748b", // slate-500
 };

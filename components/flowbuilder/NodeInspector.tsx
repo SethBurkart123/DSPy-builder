@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { CodeEditor } from "@/components/code/CodeEditor";
 import { SchemaCreator } from "@/components/schema/SchemaCreator";
 import { SchemaSelector } from "@/components/schema/SchemaSelector";
 import { generateDSPyCode } from "@/lib/generate-dspy";
@@ -57,11 +58,20 @@ export default function NodeInspector({
   const [editingPortIndex, setEditingPortIndex] = useState<{ direction: "inputs" | "outputs", index: number } | null>(null);
   const [showCode, setShowCode] = useState(false);
   
+  // Simple client-side validation for custom Python tools
+  const toolValidation = useMemo(() => {
+    if (data?.kind !== 'tool_python') return null;
+    const code = (data?.values as any)?.code as string | undefined;
+    if (!code || code.trim().length === 0) return { ok: false, msg: 'Tool code is empty' };
+    if (!/\bdef\s+[A-Za-z_]\w*\s*\(/.test(code)) return { ok: false, msg: 'Must define at least one function (def ...)' };
+    if (!/\breturn\b/.test(code)) return { ok: false, msg: 'Function must have a return statement' };
+    return { ok: true, msg: 'Looks good' };
+  }, [data]);
 
   if (!hasNode) return null;
 
-  const canEditInputs = data?.kind !== 'input' && data?.kind !== 'llm';
-  const canEditOutputs = data?.kind !== 'output' && data?.kind !== 'llm';
+  const canEditInputs = data?.kind !== 'input' && data?.kind !== 'llm' && !(data?.kind?.startsWith('tool_'));
+  const canEditOutputs = data?.kind !== 'output' && data?.kind !== 'llm' && !(data?.kind?.startsWith('tool_'));
 
   function updatePort(direction: "inputs" | "outputs", idx: number, patch: Partial<Port>) {
     if (!data) return;
@@ -196,8 +206,8 @@ export default function NodeInspector({
             </div>
           </section>
         )}
-        {/* Node-level description (hidden for input/output/llm) */}
-        {!(data?.kind === 'input' || data?.kind === 'output' || data?.kind === 'llm') && (
+        {/* Node-level description (hidden for input/output/llm/tool_*) */}
+        {!(data?.kind === 'input' || data?.kind === 'output' || data?.kind === 'llm' || data?.kind?.startsWith('tool_')) && (
           <section>
             <div className="mb-2">
               <h4 className="text-xs font-medium uppercase text-muted-foreground">Description</h4>
@@ -209,6 +219,24 @@ export default function NodeInspector({
               placeholder="Optional node description (Signature docstring)"
               rows={3}
             />
+          </section>
+        )}
+
+        {/* Custom Python tool code editor */}
+        {data?.kind === 'tool_python' && (
+          <section>
+            <div className="mb-2">
+              <h4 className="text-xs font-medium uppercase text-muted-foreground">Tool Function</h4>
+            </div>
+            <CodeEditor
+              value={data?.values?.code || ''}
+              onChange={(val) => onChange({ ...data, values: { ...(data.values || {}), code: val } })}
+              language="python"
+              height={260}
+            />
+            <div className={`mt-1 text-[11px] ${toolValidation?.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+              {toolValidation?.msg}
+            </div>
           </section>
         )}
 
@@ -232,9 +260,10 @@ export default function NodeInspector({
             </div>
           </section>
         )}
+        
         {/* Inputs */}
         {canEditInputs && (
-        <section>
+        <section className="p-2 bg-accent/30 rounded-md dark:border-border/50 border-border border">
           <div className="mb-2">
             <h4 className="text-xs font-medium uppercase text-muted-foreground">Inputs</h4>
           </div>
@@ -244,8 +273,9 @@ export default function NodeInspector({
               ?.filter(p => {
                 if (!data) return true;
                 const isLLMModel = p.type === 'llm' && p.name === 'model';
-                const isHiddenForKind = data.kind === 'predict' || data.kind === 'chainofthought';
-                return !(isHiddenForKind && isLLMModel);
+                const isHiddenForKind = data.kind === 'predict' || data.kind === 'chainofthought' || data.kind === 'agent';
+                const isToolsHandle = p.type === 'tool' && p.name === 'tools' && data.kind === 'agent';
+                return !(isHiddenForKind && isLLMModel) && !isToolsHandle;
               })
               .map((p, idx) => {
                 const actualIdx = data?.inputs?.findIndex(port => port.id === p.id) ?? idx;
@@ -293,7 +323,7 @@ export default function NodeInspector({
         )}
 
         {canEditOutputs && (
-        <section>
+        <section className="p-2 bg-accent/30 rounded-md dark:border-border/50 border-border border">
           <div className="mb-2">
             <h4 className="text-xs font-medium uppercase text-muted-foreground">Outputs</h4>
           </div>
@@ -374,9 +404,14 @@ export default function NodeInspector({
       {/* DSPy code preview inline under header toggle */}
       {(data && showCode) && (
         <div className="mt-3">
-          <pre className="max-h-64 overflow-auto rounded border bg-muted/40 p-2 text-[11px] whitespace-pre-wrap">
-{generateDSPyCode(data)}
-          </pre>
+          <CodeEditor
+            value={generateDSPyCode(data)}
+            onChange={() => { /* read-only */ }}
+            language="python"
+            height={280}
+            readOnly
+            options={{ fontSize: 12 }}
+          />
         </div>
       )}
     </div>

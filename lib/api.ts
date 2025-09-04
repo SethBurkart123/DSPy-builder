@@ -121,6 +121,7 @@ export const api = {
       inputs_values: Record<string, any>;
       model?: string;
       lm_params?: Record<string, any>;
+      tools_code?: string[];
     }
   ) =>
     http<{ outputs?: Record<string, any>; reasoning?: any; error?: string }>(

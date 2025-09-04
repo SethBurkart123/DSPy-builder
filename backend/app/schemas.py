@@ -71,6 +71,7 @@ class NodeRunIn(BaseModel):
     inputs_values: dict
     model: str | None = None
     lm_params: dict | None = None
+    tools_code: list[str] | None = None
 
 
 class NodeRunOut(BaseModel):

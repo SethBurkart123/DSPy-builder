@@ -79,6 +79,51 @@ export const NodeRegistry: Record<NodeKind, NodeDefinition> = {
       { type: "port_list", id: "outputs", role: "outputs", autogrow: true, selectable: true, title: "Outputs", colSpan: 1 },
     ],
   },
+  agent: {
+    type: "agent",
+    sections: [
+      {
+        type: "control_group",
+        id: "model",
+        inline: true,
+        selectable: true,
+        colSpan: 2,
+        controls: [
+          {
+            id: "llm-model",
+            label: "Model",
+            type: "text",
+            dataPath: "llm.model",
+            placeholder: "Model",
+            bind: { inputPortName: "model", portType: "llm", hideWhenBound: true, boundFlagPath: "connected.inputsByName.model" },
+          },
+        ],
+      },
+      { type: "port_list", id: "inputs", role: "inputs", autogrow: true, selectable: true, title: "Inputs", colSpan: 1 },
+      { type: "port_list", id: "outputs", role: "outputs", autogrow: false, selectable: true, title: "Outputs", colSpan: 1 },
+    ],
+  },
+  tool_wikipedia: {
+    type: "tool_wikipedia",
+    sections: [
+      { type: "empty_spacer", id: "left_spacer", colSpan: 1 },
+      { type: "port_list", id: "outputs", role: "outputs", autogrow: false, selectable: true, title: "Outputs", colSpan: 1 },
+    ],
+  },
+  tool_math: {
+    type: "tool_math",
+    sections: [
+      { type: "empty_spacer", id: "left_spacer", colSpan: 1 },
+      { type: "port_list", id: "outputs", role: "outputs", autogrow: false, selectable: true, title: "Outputs", colSpan: 1 },
+    ],
+  },
+  tool_python: {
+    type: "tool_python",
+    sections: [
+      { type: "empty_spacer", id: "left_spacer", colSpan: 1 },
+      { type: "port_list", id: "outputs", role: "outputs", autogrow: false, selectable: true, title: "Outputs", colSpan: 1 },
+    ],
+  },
   chainofthought: {
     type: "chainofthought",
     sections: [
