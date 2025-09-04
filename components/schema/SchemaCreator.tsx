@@ -265,7 +265,7 @@ export function SchemaCreator({
             </div>
 
             {/* Preview Panel */}
-            <div className="w-80 border-l bg-muted/40">
+            <div className="w-80 border-l bg-muted/40 flex flex-col">
               <div className="border-b bg-muted/60 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Button
@@ -287,18 +287,18 @@ export function SchemaCreator({
                 </div>
               </div>
 
-              <div className="h-full overflow-y-auto p-4">
+              <div className="h-full overflow-y-auto">
                 {showPreview ? (
                   <CodeEditor
                     value={exportToDSPy({ id: "temp", name, description, fields })}
                     onChange={() => {}}
                     language="python"
-                    height={520}
+                    height="100%"
                     readOnly
                     options={{ fontSize: 12 }}
                   />
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-3 p-4">
                     {name && (
                       <div>
                         <h4 className="text-sm font-medium text-foreground">{name}</h4>

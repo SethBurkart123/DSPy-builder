@@ -68,7 +68,7 @@ export function CodeEditor({
   );
 
   return (
-    <div className="rounded border overflow-hidden">
+    <div className="rounded border overflow-hidden" style={{ height: height }}>
       <MonacoEditor
         height={height}
         language={language}
