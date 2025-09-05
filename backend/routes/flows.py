@@ -20,6 +20,10 @@ from app.schemas import (
 )
 from app.utils import now_iso, new_id, slugify
 
+import asyncio
+import sys
+import os as _os
+from pathlib import Path
 
 router = APIRouter()
 
@@ -346,12 +350,6 @@ async def run_node_stream(flow_id: str, request: Request):
         _ = __import__("json").loads(payload_bytes.decode("utf-8") or "{}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON body: {e}")
-
-    import asyncio
-    import subprocess
-    import sys
-    import os as _os
-    from pathlib import Path
 
     provider_env = dict(_os.environ)
     workdir = Path(__file__).resolve().parents[1]
