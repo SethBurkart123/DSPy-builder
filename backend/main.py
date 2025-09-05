@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routes.flows import router as flows_router
+from routes.ai import router as ai_router
 from routes.keys import router as keys_router
 from app.db import init_db
 
@@ -45,3 +46,4 @@ def _startup_init_db():
 
 app.include_router(flows_router, prefix="/api/flows", tags=["flows"])
 app.include_router(keys_router, prefix="/api/keys", tags=["keys"])
+app.include_router(ai_router, prefix="/api/ai", tags=["ai"])

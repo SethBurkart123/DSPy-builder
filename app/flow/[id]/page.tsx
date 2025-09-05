@@ -19,6 +19,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import Topbar from "@/components/flowbuilder/Topbar";
+import FlowAssistant from "@/components/flowbuilder/FlowAssistant";
 import FlowTracePanel from "@/components/flowbuilder/FlowTracePanel";
 import NodeInspector from "@/components/flowbuilder/NodeInspector";
 import { TypedNode } from "@/components/flowbuilder/TypedNode";
@@ -29,7 +30,7 @@ import Palette from "@/components/flowbuilder/Palette";
 import { toast } from "react-hot-toast";
 import type { ColorMode, ReactFlowInstance } from "@xyflow/react";
 import { getNodeTitle, edgeStyleForType, portTypeForHandle, NODE_WIDTH, HEADER_HEIGHT, PORT_ROW_HEIGHT, HANDLE_SIZE, genId } from "@/lib/flow-utils";
-import { buildNodeDefaults } from "@/lib/node-def";
+import { buildNodeDefaults, NodeRegistry } from "@/lib/node-def";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { PlusIcon } from "lucide-react";
@@ -66,6 +67,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const [loadedFromServer, setLoadedFromServer] = useState<boolean>(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   // Track mouse position to place nodes at cursor when palette is used normally
   const [lastMousePos, setLastMousePos] = useState<{ x: number; y: number } | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TypedNodeData>>(initialNodes);
@@ -144,6 +146,24 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const [dragState, setDragState] = useState<DragState>(null);
 
   const selectedNode = useMemo(() => nodes.find((n: Node<TypedNodeData>) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
+
+  // Compute compatible kinds for the palette when opened via drag-to-empty-space
+  const paletteAllowedKinds = useMemo(() => {
+    if (!pendingConnection) return undefined;
+    const kinds = Object.keys(NodeRegistry) as (keyof typeof NodeRegistry)[] as NodeKind[];
+    // When creating a node from a source handle (output), require the new node to have a compatible input
+    if (pendingConnection.handleType === 'source') {
+      return kinds.filter(k => {
+        const defs = buildNodeDefaults(k, pendingConnection.portType);
+        return (defs.inputs || []).some(p => p.type === pendingConnection.portType);
+      });
+    }
+    // When creating from a target handle (input), require the new node to have a compatible output
+    return kinds.filter(k => {
+      const defs = buildNodeDefaults(k);
+      return (defs.outputs || []).some(p => p.type === pendingConnection.portType);
+    });
+  }, [pendingConnection]);
   
 
   // Fetch flow name for topbar and initialize demo schemas
@@ -229,7 +249,13 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
                 target: targetNodeId,
                 targetHandle: `in-${newInputPort.id}`,
               };
-      setEdges((eds: Edge[]) => addEdge({ ...newConnection, style: edgeStyleForType(portType as PortType) }, eds));
+      setEdges((eds: Edge[]) => {
+        if (wouldCreateCycle(newConnection.source!, newConnection.target!, eds)) {
+          toast.error('Connecting these nodes would create a cycle');
+          return eds;
+        }
+        return addEdge({ ...newConnection, style: edgeStyleForType(portType as PortType) }, eds);
+      });
             }
           }
           return currentNodes;
@@ -258,6 +284,36 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
 
   // (moved to lib/flow-utils) portTypeForHandle
 
+  // Graph utility: detect if adding edge source->target would create a cycle
+  function wouldCreateCycle(
+    sourceId: string,
+    targetId: string,
+    checkEdges: Edge[]
+  ): boolean {
+    if (!sourceId || !targetId) return false;
+    if (sourceId === targetId) return true;
+    // Build adjacency list for outgoing edges
+    const out: Record<string, string[]> = {};
+    for (const e of checkEdges) {
+      if (!e.source || !e.target) continue;
+      (out[e.source] ||= []).push(e.target);
+    }
+    // If we add source->target, check if target can reach source
+    const queue: string[] = [targetId];
+    const visited = new Set<string>();
+    while (queue.length) {
+      const nid = queue.shift()!;
+      if (nid === sourceId) return true;
+      if (visited.has(nid)) continue;
+      visited.add(nid);
+      const next = out[nid] || [];
+      for (const m of next) {
+        if (!visited.has(m)) queue.push(m);
+      }
+    }
+    return false;
+  }
+
   const isValidConnection = useCallback(
     (c: Connection | Edge) => {
       // Allow preview for reverse drags; finalize onConnect
@@ -268,24 +324,44 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       const t1 = portTypeForHandle(srcNode as any, c.sourceHandle);
       const t2 = portTypeForHandle(tgtNode as any, c.targetHandle);
       if (!t1 || !t2) return true;
-      return t1 === t2;
+      if (t1 !== t2) return false;
+      // Block connections that would introduce cycles
+      if (wouldCreateCycle(String(c.source), String(c.target), edges)) return false;
+      return true;
     },
-    [nodes]
+    [nodes, edges]
   );
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (!connection.source) return;
-      const src = nodes.find((n: Node<TypedNodeData>) => n.id === connection.source);
-      const pt = portTypeForHandle(src as any, connection.sourceHandle);
-      setEdges((eds: Edge[]) => addEdge({ ...connection, style: edgeStyleForType(pt || undefined) }, eds));
+      // mark that a connection actually happened
+      connectionMadeRef.current = true;
+      if (!connection.source || !connection.target) return;
+      // Prevent cycles
+      setEdges((eds: Edge[]) => {
+        if (wouldCreateCycle(connection.source!, connection.target!, eds)) {
+          toast.error('Connecting these nodes would create a cycle');
+          return eds;
+        }
+        const src = nodes.find((n: Node<TypedNodeData>) => n.id === connection.source);
+        const pt = portTypeForHandle(src as any, connection.sourceHandle);
+        return addEdge({ ...connection, style: edgeStyleForType(pt || undefined) }, eds);
+      });
     },
     [setEdges, nodes]
   );
 
+  const connectionMadeRef = useRef<boolean>(false);
+
   const onConnectStart: OnConnectStart = useCallback((_: any, { nodeId, handleId, handleType }: any) => {
-    if (!nodeId || !handleId || !handleType) return;
-    
+    if (!nodeId || !handleId) return;
+    // reset the made flag at start of drag
+    connectionMadeRef.current = false;
+
+    // Derive handle type if not provided by library
+    const derivedHandleType: 'source' | 'target' | undefined = handleType ?? (handleId.startsWith('out-') ? 'source' : (handleId.startsWith('in-') ? 'target' : undefined));
+    if (!derivedHandleType) return;
+
     const src = nodes.find((n: Node<TypedNodeData>) => n.id === nodeId);
     const portType = portTypeForHandle(src as any, handleId);
     if (!portType) return;
@@ -294,14 +370,14 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     setPendingConnection({
       nodeId,
       handleId,
-      handleType,
+      handleType: derivedHandleType,
       portType,
       position: { x: 0, y: 0 },
     });
 
     // Also set drag state for drag-to-add-input functionality
     // Only track output port drags (sources) for adding inputs to other nodes
-    if (handleType === 'source') {
+    if (derivedHandleType === 'source') {
       const newDragState = {
         isDragging: true,
         portType,
@@ -317,26 +393,33 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     }
   }, [nodes]);
 
-  const onConnectEnd: OnConnectEnd = useCallback((event: any) => {
-    if (!event || !event.target || !pendingConnection) {
+  const onConnectEnd: OnConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
+    console.log('END CONNECTION', pendingConnection)
+    if (!pendingConnection) {
       setPendingConnection(null);
       // Only clear drag state if there's no pending connection
       setDragState(null);
       window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
       return;
     }
-    
-    // Check if the connection was dropped on empty space
-    const target = event.target as Element;
-    const isOnPane = target.classList.contains('react-flow__pane');
-    
-    if (isOnPane && rfInstance) {
-      // Get the mouse position in flow coordinates
-      const rect = (event.target as Element).getBoundingClientRect();
+
+    // If a connection was made to another handle, do nothing further.
+    if (connectionMadeRef.current) {
+      setPendingConnection(null);
+      setDragState(null);
+      window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
+      return;
+    }
+
+    if (rfInstance) {
+      // Compute drop position using raw screen coords (React Flow handles offsets)
+      const clientX = 'clientX' in event ? event.clientX : event.touches[0]?.clientX || 0;
+      const clientY = 'clientY' in event ? event.clientY : event.touches[0]?.clientY || 0;
       const position = rfInstance.screenToFlowPosition({
-        x: (event as MouseEvent).clientX - rect.left,
-        y: (event as MouseEvent).clientY - rect.top,
+        x: clientX,
+        y: clientY,
       });
+      console.log(clientX, clientY)
       
       // Update the pending connection with the drop position
       setPendingConnection(prev => prev ? { ...prev, position } : null);
@@ -350,7 +433,6 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       } else {
         setPaletteOpen(true);
       }
-      // Don't clear drag state here - keep it for potential drop zone clicks
     } else {
       // Connection was dropped on a valid target - clear everything
       setPendingConnection(null);
@@ -874,6 +956,57 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     setNodes((ns) => ns.concat(node));
   }
 
+  // Helper to support AI assistant: add node, optionally with custom title, returning created id
+  function addNodeForAssistant(kind: NodeKind, title?: string): { id: string; kind: NodeKind; title: string } | null {
+    try {
+      // Prefer placing at cursor if available, otherwise center
+      let pos: { x: number; y: number } | undefined;
+      if (lastMousePos && rfInstance) {
+        pos = rfInstance.screenToFlowPosition({ x: lastMousePos.x, y: lastMousePos.y });
+      }
+      if (!pos) {
+        const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 - 24 };
+        pos = rfInstance?.screenToFlowPosition(center) ?? { x: center.x, y: center.y };
+      }
+      if (kind === 'input' && nodes.some(n => n.data.kind === 'input')) {
+        // Only one global input node allowed
+        return null;
+      }
+      const node = makeNode(kind, pos, title);
+      setNodes((ns) => ns.concat(node));
+      return { id: node.id, kind, title: node.data.title };
+    } catch {
+      return null;
+    }
+  }
+
+  function renameNodeByName(oldName: string, newName: string): boolean {
+    const on = oldName.trim().toLowerCase();
+    let changed = false;
+    setNodes((ns) => ns.map((n) => {
+      const title = (n.data.title || '').toLowerCase();
+      const match = title === on || title.includes(on);
+      if (match && !changed) {
+        changed = true;
+        return { ...n, data: { ...n.data, title: newName } } as Node<TypedNodeData>;
+      }
+      return n;
+    }));
+    return changed;
+  }
+
+  function deleteNodeByName(name: string): boolean {
+    const target = name.trim().toLowerCase();
+    const found = nodes.find(n => (n.data.title || '').toLowerCase() === target) || nodes.find(n => (n.data.title || '').toLowerCase().includes(target));
+    if (!found) return false;
+    const id = found.id;
+    setNodes((ns) => ns.filter(n => n.id !== id));
+    setEdges((es) => es.filter(e => e.source !== id && e.target !== id));
+    if (selectedNodeId === id) setSelectedNodeId(null);
+    setSelectedNodeIds((prev) => prev.filter(pid => pid !== id));
+    return true;
+  }
+
   function addNodeWithConnection(kind: NodeKind, position: { x: number; y: number }, connection: {
     nodeId: string;
     handleId: string;
@@ -901,10 +1034,13 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       
       if (connection.handleType === 'source') {
         // Connection is from an output port, so we need to find an input port on the new node
-        compatiblePort = node.data.inputs.find(p => p.type === connection.portType) || null;
+        const matches = node.data.inputs.filter(p => p.type === connection.portType);
+        compatiblePort = matches[0] || null;
       } else {
         // Connection is from an input port, so we need to find an output port on the new node
-        compatiblePort = node.data.outputs.find(p => p.type === connection.portType) || null;
+        const matches = node.data.outputs.filter(p => p.type === connection.portType);
+        // Prefer a port literally named 'output' when multiple match (e.g., chainofthought)
+        compatiblePort = matches.find(p => p.name === 'output') || matches[0] || null;
       }
       
       if (compatiblePort) {
@@ -931,7 +1067,10 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           const targetPortType = portTypeForHandle(targetNode as any, newConnection.targetHandle);
           if (sourcePortType && targetPortType && sourcePortType === targetPortType) {
             setTimeout(() => {
-              setEdges((eds) => addEdge({ ...newConnection, style: edgeStyleForType(connection.portType) }, eds));
+              setEdges((eds) => {
+                if (wouldCreateCycle(newConnection.source!, newConnection.target!, eds)) return eds;
+                return addEdge({ ...newConnection, style: edgeStyleForType(connection.portType) }, eds);
+              });
             }, 10);
           }
         }
@@ -1132,7 +1271,15 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey;
+      // Only handle shortcuts when not typing in an input/textarea/contentEditable
+      const target = (e.target as HTMLElement) || null;
+      const active = (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) : null);
+      const focusEl = target && target !== document.body ? target : active;
+      const tag = focusEl?.tagName?.toLowerCase();
+      const typing = !!(focusEl && (tag === 'input' || tag === 'textarea' || focusEl.isContentEditable));
+      if (typing) return;
       if (!meta) return;
+      const inCanvas = !!(focusEl && (focusEl.closest?.('.react-flow'))) || selectedNodeIds.length > 0;
       if (e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo(); else undo();
@@ -1140,12 +1287,14 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         e.preventDefault();
         redo();
       } else if (e.key.toLowerCase() === 'c') {
+        if (!inCanvas) return; // only copy nodes when canvas is focused
         // Copy
         if (selectedNodeIds.length === 0) return;
         const selNodes = nodes.filter(n => selectedNodeIds.includes(n.id));
         const selEdges = edges.filter(e => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target));
         clipboardRef.current = { nodes: selNodes.map(n => ({ ...n })), edges: selEdges.map(e => ({ ...e })) };
       } else if (e.key.toLowerCase() === 'v') {
+        if (!inCanvas) return; // only paste nodes when canvas is focused
         // Paste
         if (!clipboardRef.current) return;
         e.preventDefault();
@@ -1164,8 +1313,22 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
         }));
         // Deselect all existing nodes, then add new nodes as selected
         setNodes(ns => [...ns.map(n => ({ ...n, selected: false })), ...newNodes]);
-        // Deselect all existing edges (don't auto-select new edges)
-        setEdges(es => [...es.map(ed => ({ ...ed, selected: false })), ...newEdges]);
+        // Deselect all existing edges and add new ones, filtering cycles
+        setEdges(es => {
+          let next = es.map(ed => ({ ...ed, selected: false })) as Edge[];
+          let dropped = 0;
+          for (const e of newEdges) {
+            if (wouldCreateCycle(e.source as string, e.target as string, next)) {
+              dropped++;
+              continue;
+            }
+            next = addEdge(e as any, next);
+          }
+          if (dropped > 0) {
+            toast.error(`${dropped} edge${dropped === 1 ? '' : 's'} dropped to avoid cycles`);
+          }
+          return next;
+        });
         setSelectedNodeIds(newNodes.map(n => n.id));
         setSelectedNodeId(newNodes[0]?.id ?? null);
       }
@@ -1204,8 +1367,8 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           if (!ok) return;
         }
         router.push('/');
-      }} onRunAll={runAll} flowId={id} onUndo={undo} onRedo={redo} canUndo={historyIndexRef.current > 0} canRedo={historyIndexRef.current < historyRef.current.length - 1} onToggleTrace={() => setTraceOpen(v => !v)} traceOpen={traceOpen} />
-      <div className="absolute inset-0 top-14 flow-builder" style={{ right: traceOpen ? 420 : 0 }}>
+      }} onRunAll={runAll} flowId={id} onUndo={undo} onRedo={redo} canUndo={historyIndexRef.current > 0} canRedo={historyIndexRef.current < historyRef.current.length - 1} onToggleTrace={() => setTraceOpen(v => !v)} traceOpen={traceOpen} onToggleAssistant={() => setAssistantOpen(v => { const nv = !v; if (nv) setTraceOpen(false); return nv; })} assistantOpen={assistantOpen} />
+      <div className="absolute inset-0 top-14 flow-builder" style={{ right: (traceOpen ? 420 : 0) + (assistantOpen ? 360 : 0) }}>
         <ReactFlow
           nodeTypes={nodeTypes}
           nodes={nodes}
@@ -1294,6 +1457,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           window.dispatchEvent(new CustomEvent('drag-state-change', { detail: null }));
           setPaletteOpen(false);
         }}
+        allowedKinds={paletteAllowedKinds}
         hiddenKinds={(() => {
           const hidden: NodeKind[] = [] as NodeKind[];
           if (nodes.some(n => n.data.kind === 'input')) hidden.push('input');
@@ -1325,6 +1489,18 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
           await new Promise<void>(resolve => setTimeout(resolve, 0));
           await runAll();
         }}
+      />
+
+      {/* AI Assistant Panel */}
+      <FlowAssistant
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        nodes={nodes}
+        edges={edges}
+        onAddNode={(kind, title) => addNodeForAssistant(kind, title)}
+        onRenameNode={renameNodeByName}
+        onDeleteNode={deleteNodeByName}
+        onRunAll={() => runAll()}
       />
     </div>
   );

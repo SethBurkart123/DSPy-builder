@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, RefreshCcw, CheckCircle2, AlertCircle, Library, Undo2, Redo2, Download, Camera } from "lucide-react";
+import { ArrowLeft, RefreshCcw, CheckCircle2, AlertCircle, Library, Undo2, Redo2, Download, Camera, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useRef, useState } from "react";
 import KeysManager from "@/components/KeysManager";
@@ -14,7 +14,7 @@ import type { CustomSchema } from "@/components/flowbuilder/types";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
-export default function Topbar({ title, status = "idle", onBack, onRunAll, flowId, onUndo, onRedo, canUndo, canRedo, onToggleTrace, traceOpen }: { title: string; status?: SaveStatus; onBack?: () => void; onRunAll?: () => void; flowId: string; onUndo?: () => void; onRedo?: () => void; canUndo?: boolean; canRedo?: boolean; onToggleTrace?: () => void; traceOpen?: boolean }) {
+export default function Topbar({ title, status = "idle", onBack, onRunAll, flowId, onUndo, onRedo, canUndo, canRedo, onToggleTrace, traceOpen, onToggleAssistant, assistantOpen }: { title: string; status?: SaveStatus; onBack?: () => void; onRunAll?: () => void; flowId: string; onUndo?: () => void; onRedo?: () => void; canUndo?: boolean; canRedo?: boolean; onToggleTrace?: () => void; traceOpen?: boolean; onToggleAssistant?: () => void; assistantOpen?: boolean }) {
   const [keysOpen, setKeysOpen] = useState(false);
   const [schemaBrowserOpen, setSchemaBrowserOpen] = useState(false);
   const [schemaCreatorOpen, setSchemaCreatorOpen] = useState(false);
@@ -94,6 +94,12 @@ export default function Topbar({ title, status = "idle", onBack, onRunAll, flowI
           </span>
         )}
         <div className="flex items-center gap-2">
+          {onToggleAssistant && (
+            <Button variant={assistantOpen ? "default" : "outline"} size="sm" onClick={onToggleAssistant} title="Open AI Builder">
+              <Sparkles className="h-4 w-4" />
+              {assistantOpen ? 'Close AI' : 'AI Builder'}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setSchemaBrowserOpen(true)} title="Schema Library">
             <Library className="h-4 w-4" />
             Schema Library

@@ -180,4 +180,7 @@ export const api = {
   getFlowPreview: (flowId: string) => http<FlowPreview>(`${BASE}/flows/${flowId}/preview`),
   setFlowPreview: (flowId: string, image: string) =>
     http<FlowPreview>(`${BASE}/flows/${flowId}/preview`, { method: "PUT", body: JSON.stringify({ image }) }),
+  // AI
+  chat: (data: { model: string; messages: { role: 'system' | 'user' | 'assistant'; content: string }[]; temperature?: number }) =>
+    http<{ content: string }>(`${BASE}/ai/chat`, { method: 'POST', body: JSON.stringify(data) }),
 };

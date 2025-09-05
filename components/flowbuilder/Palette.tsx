@@ -20,11 +20,14 @@ export default function Palette({
   onClose,
   onChoose,
   hiddenKinds = [],
+  allowedKinds,
 }: {
   open: boolean;
   onClose: () => void;
   onChoose: (kind: NodeKind) => void;
   hiddenKinds?: NodeKind[];
+  // If provided, only show these kinds (after hiddenKinds filter)
+  allowedKinds?: NodeKind[];
 }) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -32,10 +35,14 @@ export default function Palette({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = OPTIONS.filter((o) => !hiddenKinds.includes(o.key));
+    let base = OPTIONS.filter((o) => !hiddenKinds.includes(o.key));
+    if (allowedKinds && allowedKinds.length > 0) {
+      const allow = new Set<NodeKind>(allowedKinds);
+      base = base.filter(o => allow.has(o.key));
+    }
     if (!q) return base;
     return base.filter((o) => o.label.toLowerCase().includes(q) || o.key.includes(q));
-  }, [query, hiddenKinds]);
+  }, [query, hiddenKinds, allowedKinds]);
 
   useEffect(() => {
     if (open) {

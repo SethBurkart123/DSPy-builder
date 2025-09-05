@@ -55,8 +55,16 @@ export function PortListSection({
   const showDropZone = useMemo(() => {
     if (!autogrow) return false;
     if (data.kind === "input") return false; // don't add inputs to input node
+    const isBlockedType = dragState?.portType === "llm" || dragState?.portType === "tool";
     const typeOk = dragState?.portType ? (!accepts || accepts.includes(dragState.portType)) : false;
-    return !!(dragState?.isDragging && isDragHovering && typeOk && dragState.sourceNodeId !== nodeId && role === "inputs");
+    return !!(
+      dragState?.isDragging &&
+      isDragHovering &&
+      typeOk &&
+      !isBlockedType &&
+      dragState.sourceNodeId !== nodeId &&
+      role === "inputs"
+    );
   }, [autogrow, data.kind, dragState, isDragHovering, nodeId, role, accepts]);
 
   const handleDropZoneClick = useCallback(() => {
@@ -98,6 +106,7 @@ export function PortListSection({
                   className={`border !border-border absolute`}
                   style={{
                     ...handleStyleForPort(p.type),
+                    // Use standard half-handle offset so center aligns at edge
                     left: -((HANDLE_SIZE / 2) + NODE_GRID_PADDING_X),
                     top: "50%",
                     transform: "translateY(-50%)",
@@ -159,7 +168,7 @@ export function PortListSection({
               </div>
             ))}
 
-        {showDropZone && dragState?.portType && dragState?.portType !== "llm" && role === "inputs" && (
+        {showDropZone && dragState?.portType && dragState?.portType !== "llm" && dragState?.portType !== "tool" && role === "inputs" && (
           <div className="flex items-center text-[10px] w-full relative" style={{ height: `${portSpacing}px` }}>
             <Handle
               id={`in-${dropzoneId}`}
@@ -169,7 +178,10 @@ export function PortListSection({
               className={`border !border-border absolute`}
               style={{
                 ...handleStyleForPort(dragState.portType),
-                left: -((HANDLE_SIZE / 2) + NODE_GRID_PADDING_X),
+                // Align with node padding rather than half-handle offset
+                left: -(NODE_GRID_PADDING_X),
+                top: "50%",
+                transform: "translateY(-50%)",
               }}
             />
             <span className="italic opacity-80">{dragState.portType}</span>
